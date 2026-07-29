@@ -1,0 +1,277 @@
+<div id="app">
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-panel="sprint" role="tab">Sprint</button>
+    <button class="tab" data-panel="tasks" role="tab">To-do</button>
+  </nav>
+
+  <section id="sprint" class="panel">
+    <div class="clock" id="clock">--:--</div>
+    <div class="phase" id="phase">Not running</div>
+
+    <div class="row">
+      <button class="action primary" id="startStop">Start</button>
+      <label>Write <input type="number" id="writing" min="1" max="180" value="25"> min</label>
+      <label>Rest <input type="number" id="resting" min="1" max="60" value="5"> min</label>
+    </div>
+
+    <div class="stats" id="stats"></div>
+    <h3>Finished sprints</h3>
+    <div id="history"></div>
+  </section>
+
+  <section id="tasks" class="panel hidden">
+    <div class="row">
+      <label><input type="checkbox" id="showDone"> Show finished</label>
+      <span class="hint" id="taskCount"></span>
+    </div>
+    <div id="taskList"></div>
+  </section>
+</div>
+
+<style>
+  :root { color-scheme: light dark; --radius: 8px; }
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font: 13px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--nl-text, #1c1c1e);
+    background: var(--nl-surface, transparent);
+  }
+
+  #app { padding: 12px; display: flex; flex-direction: column; gap: 12px; height: 100vh; }
+  .tabs { display: flex; gap: 4px; }
+  .panel { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+  .panel.hidden { display: none; }
+
+  .tab, .action {
+    padding: 6px 12px;
+    border: 1px solid var(--nl-border, #d0d0d5);
+    border-radius: var(--radius);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .tab:hover, .action:hover { background: var(--nl-surface-hover, rgba(127,127,127,0.1)); }
+  .tab.active { border-color: var(--nl-accent, #4a7fb5); font-weight: 600; }
+  .action.primary { border-color: var(--nl-accent, #4a7fb5); font-weight: 600; }
+
+  /* The clock is the whole point of the panel, so it is the size of the thing
+     you are actually looking at from across a desk. */
+  .clock {
+    font-size: 56px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 300;
+    text-align: center;
+    letter-spacing: -0.02em;
+  }
+  .clock.resting { opacity: 0.6; }
+
+  .phase { text-align: center; opacity: 0.7; }
+
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  label { display: flex; gap: 4px; align-items: center; opacity: 0.85; }
+
+  input[type="number"] {
+    width: 4.5em;
+    padding: 4px 6px;
+    border: 1px solid var(--nl-border, #d0d0d5);
+    border-radius: var(--radius);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+  }
+
+  .stats { display: flex; gap: 16px; flex-wrap: wrap; }
+  .stat { display: flex; flex-direction: column; }
+  .stat b { font-size: 18px; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 11px; opacity: 0.65; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--nl-border, #e4e4e8); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+
+  li.task {
+    padding: 8px 10px;
+    border: 1px solid var(--nl-border, #d0d0d5);
+    border-left: 3px solid var(--nl-accent, #c08a2e);
+    border-radius: var(--radius);
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  li.task.done { opacity: 0.5; border-left-color: var(--nl-border, #d0d0d5); }
+  .task-body { flex: 1; min-width: 0; }
+  .task-where { font-size: 11px; opacity: 0.65; }
+  .task-anchor { font-style: italic; opacity: 0.8; }
+
+  .hint { opacity: 0.7; }
+  .empty { padding: 24px 0; text-align: center; opacity: 0.7; }
+</style>
+
+<script>
+  let nextId = 1;
+  const waiting = new Map();
+
+  window.addEventListener('message', (event) => {
+    let message;
+    try {
+      message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+    } catch { return; }
+    if (!message || message.replyTo == null) return;
+    const resolve = waiting.get(message.replyTo);
+    if (!resolve) return;
+    waiting.delete(message.replyTo);
+    resolve(message.payload ?? message);
+  });
+
+  function ask(kind, extra) {
+    const id = nextId++;
+    return new Promise((resolve) => {
+      waiting.set(id, resolve);
+      parent.postMessage(JSON.stringify({ ...(extra || {}), kind, replyTo: id }), '*');
+      setTimeout(() => {
+        if (!waiting.has(id)) return;
+        waiting.delete(id);
+        resolve({ error: 'No answer from the host.' });
+      }, 30000);
+    });
+  }
+
+  const escape = (s) => String(s ?? '').replace(/[&<>]/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+  const clock = document.getElementById('clock');
+  const phase = document.getElementById('phase');
+  const startStop = document.getElementById('startStop');
+  const writing = document.getElementById('writing');
+  const resting = document.getElementById('resting');
+
+  let running = false;
+
+  function drawSprint(state) {
+    if (!state || state.error) return;
+
+    running = state.phase === 'Writing';
+    const seconds = state.secondsLeft ?? 0;
+    clock.textContent = String(Math.floor(seconds / 60)).padStart(2, '0') + ':' +
+      String(seconds % 60).padStart(2, '0');
+    clock.classList.toggle('resting', state.phase === 'Resting');
+
+    phase.textContent =
+      state.phase === 'Writing' ? state.wordsSoFar + ' words so far, ' + state.wordsPerMinute + ' a minute'
+      : state.phase === 'Resting' ? 'Resting'
+      : 'Not running';
+
+    startStop.textContent = running ? 'Stop' : 'Start';
+    writing.value = state.writingMinutes;
+    resting.value = state.restingMinutes;
+
+    document.getElementById('stats').innerHTML =
+      stat(state.completed, 'sprints') +
+      stat(state.totalWords, 'words') +
+      stat(state.totalMinutes, 'minutes') +
+      stat(state.averageRate, 'words a minute');
+
+    document.getElementById('history').innerHTML = state.history && state.history.length
+      ? '<table><thead><tr><th>Started</th><th class="num">Minutes</th>' +
+        '<th class="num">Words</th><th class="num">A minute</th></tr></thead><tbody>' +
+        state.history.map((h) => {
+          const when = new Date(h.startedAt);
+          const rate = h.minutes > 0 ? Math.round(h.words / h.minutes) : 0;
+          return '<tr><td>' + escape(isNaN(when) ? h.startedAt : when.toLocaleString()) +
+            '</td><td class="num">' + h.minutes + '</td><td class="num">' + h.words +
+            '</td><td class="num">' + rate + '</td></tr>';
+        }).join('') + '</tbody></table>'
+      : '<p class="empty">No sprints yet.</p>';
+  }
+
+  const stat = (value, label) =>
+    '<div class="stat"><b>' + (value ?? 0) + '</b><span>' + escape(label) + '</span></div>';
+
+  startStop.onclick = async () => {
+    drawSprint(await ask(running ? 'sprintStop' : 'sprintStart'));
+  };
+
+  const pushSettings = async () => {
+    drawSprint(await ask('sprintSettings', {
+      writingMinutes: Number(writing.value) || 25,
+      restingMinutes: Number(resting.value) || 5
+    }));
+  };
+  writing.onchange = pushSettings;
+  resting.onchange = pushSettings;
+
+  // The clock has to move on its own. One second while a sprint is running,
+  // slower otherwise - there is nothing to watch when nothing is running.
+  setInterval(async () => {
+    if (document.getElementById('sprint').classList.contains('hidden')) return;
+    drawSprint(await ask('sprint'));
+  }, 1000);
+
+  // ── The board ──
+
+  const taskList = document.getElementById('taskList');
+  const showDone = document.getElementById('showDone');
+
+  async function drawTasks() {
+    const reply = await ask('tasks');
+    if (reply.error) {
+      taskList.innerHTML = '<p class="empty">' + escape(reply.error) + '</p>';
+      return;
+    }
+
+    const all = reply.tasks || [];
+    const shown = showDone.checked ? all : all.filter((t) => !t.done);
+    const open = all.filter((t) => !t.done).length;
+    document.getElementById('taskCount').textContent =
+      open + ' open of ' + all.length;
+
+    if (shown.length === 0) {
+      taskList.innerHTML = '<p class="empty">' +
+        (all.length ? 'Nothing open. Everything is ticked off.'
+                    : 'No comments yet. Leave one on a passage and it appears here.') +
+        '</p>';
+      return;
+    }
+
+    taskList.innerHTML = '<ul>' + shown.map((t, i) =>
+      '<li class="task' + (t.done ? ' done' : '') + '">' +
+        '<input type="checkbox" data-index="' + i + '"' + (t.done ? ' checked' : '') + '>' +
+        '<div class="task-body">' +
+          '<div>' + escape(t.text) + '</div>' +
+          (t.anchor ? '<div class="task-anchor">on "' + escape(t.anchor) + '"</div>' : '') +
+          '<div class="task-where">' + escape(t.chapterTitle + ' / ' + t.sceneTitle) +
+            (t.author ? ' - ' + escape(t.author) : '') + '</div>' +
+        '</div>' +
+      '</li>').join('') + '</ul>';
+
+    taskList.querySelectorAll('input[type="checkbox"]').forEach((box) => {
+      box.onchange = async () => {
+        const task = shown[Number(box.dataset.index)];
+        await ask(box.checked ? 'taskDone' : 'taskReopen', {
+          chapterGuid: task.chapterGuid,
+          sceneId: task.sceneId,
+          commentId: task.commentId
+        });
+        drawTasks();
+      };
+    });
+  }
+
+  showDone.onchange = drawTasks;
+
+  document.querySelectorAll('.tab').forEach((tab) => {
+    tab.onclick = () => {
+      document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
+      document.querySelectorAll('.panel').forEach((p) =>
+        p.classList.toggle('hidden', p.id !== tab.dataset.panel));
+      if (tab.dataset.panel === 'tasks') drawTasks();
+    };
+  });
+
+  ask('sprint').then(drawSprint);
+</script>

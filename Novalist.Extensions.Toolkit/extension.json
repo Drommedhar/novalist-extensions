@@ -1,0 +1,28 @@
+{
+  "id": "com.novalist.toolkit",
+  "name": "Toolkit",
+  "description": "Writing sprints, a board over your to-do comments, dictionary and thesaurus lookup, and web page capture that keeps the readable text.",
+  "version": "1.0.0",
+  "author": "Novalist Team",
+  "entryAssembly": "Novalist.Extensions.Toolkit.dll",
+  "minHostVersion": "2.3.0",
+  "maxHostVersion": "",
+  "dependencies": [],
+  "tags": [
+    "sprints",
+    "tasks",
+    "dictionary",
+    "research"
+  ],
+  "contributes": {
+    "views": [
+      {
+        "key": "com.novalist.toolkit.board.web",
+        "title": "Toolkit",
+        "iconPath": "M12 8v4l3 2 M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z",
+        "placement": "main",
+        "entry": "web/board.html"
+      }
+    ]
+  }
+}
