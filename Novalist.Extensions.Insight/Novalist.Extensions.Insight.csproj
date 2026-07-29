@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <ExtensionFolder>Insight</ExtensionFolder>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Novalist.Extensions.Tests" />
+  </ItemGroup>
+</Project>

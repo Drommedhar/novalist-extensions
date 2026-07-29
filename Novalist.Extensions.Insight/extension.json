@@ -1,0 +1,28 @@
+{
+  "id": "com.novalist.insight",
+  "name": "Insight",
+  "description": "Reports over the whole manuscript: name drift, project health, a continuity worklist, a word-frequency concordance and a pacing curve.",
+  "version": "1.0.0",
+  "author": "Novalist Team",
+  "entryAssembly": "Novalist.Extensions.Insight.dll",
+  "minHostVersion": "2.3.0",
+  "maxHostVersion": "",
+  "dependencies": [],
+  "tags": [
+    "analysis",
+    "reports",
+    "continuity",
+    "consistency"
+  ],
+  "contributes": {
+    "views": [
+      {
+        "key": "com.novalist.insight.report.web",
+        "title": "Insight",
+        "iconPath": "M3 3v18h18 M7 16l4-6 3 4 4-7",
+        "placement": "main",
+        "entry": "web/report.html"
+      }
+    ]
+  }
+}

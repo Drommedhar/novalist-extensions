@@ -1,0 +1,10 @@
+{
+  "insight": {
+    "title": "Insight",
+    "health": "Projektzustand",
+    "drift": "Namensabweichungen",
+    "concordance": "Worthäufigkeit",
+    "pacing": "Erzähltempo",
+    "continuity": "Kontinuität"
+  }
+}

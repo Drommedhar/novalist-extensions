@@ -1,0 +1,10 @@
+{
+  "insight": {
+    "title": "Insight",
+    "health": "Project health",
+    "drift": "Name drift",
+    "concordance": "Word frequency",
+    "pacing": "Pacing",
+    "continuity": "Continuity"
+  }
+}
