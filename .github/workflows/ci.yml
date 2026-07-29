@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  DOTNET_VERSION: 8.0.x
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # Against the published SDK package rather than the sibling checkout, so
+      # CI builds what a third party building these would build.
+      - name: Restore
+        run: dotnet restore -p:UseLocalSdk=false
+
+      - name: Build
+        run: dotnet build -c Release --no-restore -p:UseLocalSdk=false
+
+      - name: Test
+        run: dotnet test -c Release --no-build -p:UseLocalSdk=false
+
+      - name: Check every manifest is readable and consistent
+        run: |
+          fail=0
+          for manifest in */extension.json; do
+            project="$(dirname "$manifest")"
+            id="$(jq -r '.id' "$manifest")"
+            entry="$(jq -r '.entryAssembly' "$manifest")"
+
+            # An entryAssembly that does not match the project is the fault that
+            # produces an extension the host silently refuses to load.
+            if [ "$entry" != "$project.dll" ]; then
+              echo "::error file=$manifest::entryAssembly is '$entry', expected '$project.dll'"
+              fail=1
+            fi
+            case "$id" in
+              com.novalist.*) ;;
+              *) echo "::error file=$manifest::id '$id' is not namespaced"; fail=1 ;;
+            esac
+          done
+          exit $fail

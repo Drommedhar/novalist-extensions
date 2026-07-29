@@ -1,0 +1,9 @@
+{
+  "formats": {
+    "importing": "Importing",
+    "importNeedsPath": "Import needs a path.",
+    "importFailed": "Import failed: {0}",
+    "imported": "Imported {0} chapter(s) and {1} scene(s).",
+    "importSkipped": "{0} thing(s) were skipped: {1}"
+  }
+}

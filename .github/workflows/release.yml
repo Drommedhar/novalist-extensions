@@ -1,0 +1,113 @@
+name: Release extensions
+
+# A tag names one extension and a version: formats-v1.0.0, insight-v1.2.0.
+#
+# One repository holds several extensions, and they do not move together - a fix
+# to the EPUB check has no business bumping the version of the writing timer. So
+# the tag says which one is being released, and only that one is built and
+# published.
+on:
+  push:
+    tags:
+      - "*-v*"
+
+env:
+  DOTNET_VERSION: 8.0.x
+  CONFIGURATION: Release
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Work out which extension this tag is for
+        id: which
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          SLUG="${TAG%%-v*}"
+          VERSION="${TAG##*-v}"
+
+          case "$SLUG" in
+            formats)  PROJECT=Novalist.Extensions.Formats;  ID=com.novalist.formats ;;
+            insight)  PROJECT=Novalist.Extensions.Insight;  ID=com.novalist.insight ;;
+            toolkit)  PROJECT=Novalist.Extensions.Toolkit;  ID=com.novalist.toolkit ;;
+            publish)  PROJECT=Novalist.Extensions.Publish;  ID=com.novalist.publish ;;
+            *)
+              echo "::error::Unknown extension slug '$SLUG'. Tag as <slug>-v<version>."
+              exit 1
+              ;;
+          esac
+
+          if [ ! -d "$PROJECT" ]; then
+            echo "::error::$PROJECT is not in this repository."
+            exit 1
+          fi
+
+          echo "slug=$SLUG"       >> "$GITHUB_OUTPUT"
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+          echo "id=$ID"           >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp the version into the manifest
+        run: |
+          cd "${{ steps.which.outputs.project }}"
+          jq --arg v "${{ steps.which.outputs.version }}" '.version = $v' \
+            extension.json > extension.tmp && mv extension.tmp extension.json
+          # The manifest is the only place the version is written down, and the
+          # tag is the only place it is decided. If those disagree the gallery
+          # ends up serving a build that does not know its own version.
+          jq -r '"Publishing \(.id) \(.version)"' extension.json
+
+      - name: Restore
+        run: >-
+          dotnet restore "${{ steps.which.outputs.project }}"
+          -p:UseLocalSdk=false
+
+      - name: Build
+        run: >-
+          dotnet build "${{ steps.which.outputs.project }}"
+          -c ${{ env.CONFIGURATION }}
+          --no-restore
+          -p:UseLocalSdk=false
+
+      - name: Test
+        # The whole test project runs, not just this extension's tests: a change
+        # to shared code that breaks a sibling should stop the release.
+        run: >-
+          dotnet test tests/Novalist.Extensions.Tests
+          -c ${{ env.CONFIGURATION }}
+          -p:UseLocalSdk=false
+
+      - name: Package
+        run: |
+          cd "${{ steps.which.outputs.project }}/bin/${{ env.CONFIGURATION }}/net8.0"
+          ZIP="${GITHUB_WORKSPACE}/${{ steps.which.outputs.id }}.zip"
+
+          # Only the extension's own payload. The SDK assembly is supplied by the
+          # host, and shipping a copy of it is how an extension ends up loading
+          # two different versions of the same types.
+          FILES="${{ steps.which.outputs.project }}.dll extension.json"
+          for dir in Locales web data; do
+            [ -d "$dir" ] && FILES="$FILES $dir"
+          done
+          zip -r "$ZIP" $FILES
+
+          unzip -l "$ZIP"
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "${{ steps.which.outputs.slug }} ${{ steps.which.outputs.version }}"
+          generate_release_notes: true
+          files: ${{ steps.which.outputs.id }}.zip

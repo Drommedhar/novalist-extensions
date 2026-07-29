@@ -1,0 +1,64 @@
+<Project>
+  <!--
+    Every extension here ships the same shape: one assembly, a manifest, locale
+    files and any web views. This copies them into the local Novalist extensions
+    folder after a build so a rebuild is all it takes to see the change - which
+    is the difference between iterating on an extension and packaging one.
+
+    ExtensionFolder is set per project; a project that does not set it is not
+    deployed rather than being deployed somewhere wrong.
+  -->
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\extension.json')">
+    <Content Include="extension.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\Locales')">
+    <Content Include="Locales\*.json" CopyToOutputDirectory="PreserveNewest"
+             Link="Locales\%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\web')">
+    <Content Include="web\*.html" CopyToOutputDirectory="PreserveNewest"
+             Link="web\%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\data')">
+    <Content Include="data\*.*" CopyToOutputDirectory="PreserveNewest"
+             Link="data\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <Target Name="DeployExtension" AfterTargets="Build"
+          Condition="'$(ExtensionFolder)' != '' And '$(OS)' == 'Windows_NT'">
+    <PropertyGroup>
+      <ExtensionDeployDir>$(APPDATA)\Novalist\Extensions\$(ExtensionFolder)</ExtensionDeployDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(ExtensionDeployDir)" />
+    <ItemGroup>
+      <_Payload Include="$(OutputPath)$(AssemblyName).dll" />
+      <_Payload Include="$(OutputPath)extension.json" />
+      <_Locales Include="$(OutputPath)Locales\*.*" />
+      <_Web Include="$(OutputPath)web\*.*" />
+      <_Data Include="$(OutputPath)data\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_Payload)" DestinationFolder="$(ExtensionDeployDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_Locales)" DestinationFolder="$(ExtensionDeployDir)\Locales" SkipUnchangedFiles="true" Condition="'@(_Locales)' != ''" />
+    <Copy SourceFiles="@(_Web)" DestinationFolder="$(ExtensionDeployDir)\web" SkipUnchangedFiles="true" Condition="'@(_Web)' != ''" />
+    <Copy SourceFiles="@(_Data)" DestinationFolder="$(ExtensionDeployDir)\data" SkipUnchangedFiles="true" Condition="'@(_Data)' != ''" />
+  </Target>
+
+  <Target Name="DeployExtensionUnix" AfterTargets="Build"
+          Condition="'$(ExtensionFolder)' != '' And '$(OS)' != 'Windows_NT'">
+    <PropertyGroup>
+      <ExtensionDeployDir>$(HOME)/Library/Application Support/Novalist/Extensions/$(ExtensionFolder)</ExtensionDeployDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(ExtensionDeployDir)" />
+    <ItemGroup>
+      <_PayloadU Include="$(OutputPath)$(AssemblyName).dll" />
+      <_PayloadU Include="$(OutputPath)extension.json" />
+      <_LocalesU Include="$(OutputPath)Locales/*.*" />
+      <_WebU Include="$(OutputPath)web/*.*" />
+      <_DataU Include="$(OutputPath)data/*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_PayloadU)" DestinationFolder="$(ExtensionDeployDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_LocalesU)" DestinationFolder="$(ExtensionDeployDir)/Locales" SkipUnchangedFiles="true" Condition="'@(_LocalesU)' != ''" />
+    <Copy SourceFiles="@(_WebU)" DestinationFolder="$(ExtensionDeployDir)/web" SkipUnchangedFiles="true" Condition="'@(_WebU)' != ''" />
+    <Copy SourceFiles="@(_DataU)" DestinationFolder="$(ExtensionDeployDir)/data" SkipUnchangedFiles="true" Condition="'@(_DataU)' != ''" />
+  </Target>
+</Project>

@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/tests/">
+    <Project Path="tests/Novalist.Extensions.Tests/Novalist.Extensions.Tests.csproj" />
+  </Folder>
+  <Project Path="Novalist.Extensions.Formats/Novalist.Extensions.Formats.csproj" />
+</Solution>

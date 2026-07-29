@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <ExtensionFolder>Formats</ExtensionFolder>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The writers' and readers' helpers are internal because nothing outside
+         should call them, and tested because they are where the bugs live. -->
+    <InternalsVisibleTo Include="Novalist.Extensions.Tests" />
+  </ItemGroup>
+</Project>

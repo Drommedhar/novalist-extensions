@@ -1,0 +1,23 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!--
+    Local development builds against the SDK source next door, so a change to
+    the SDK is testable here without a package round trip. CI passes
+    UseLocalSdk=false and takes the published package instead, which is what a
+    third party building these would get.
+  -->
+  <ItemGroup Condition="'$(UseLocalSdk)' != 'false'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\novalist-official\Novalist.Sdk\Novalist.Sdk.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalSdk)' == 'false'">
+    <PackageReference Include="Novalist.Sdk" Version="*" />
+  </ItemGroup>
+</Project>

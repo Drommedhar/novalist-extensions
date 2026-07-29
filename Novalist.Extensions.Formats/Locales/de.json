@@ -1,0 +1,9 @@
+{
+  "formats": {
+    "importing": "Import läuft",
+    "importNeedsPath": "Für den Import wird ein Pfad benötigt.",
+    "importFailed": "Import fehlgeschlagen: {0}",
+    "imported": "{0} Kapitel und {1} Szenen importiert.",
+    "importSkipped": "{0} Element(e) übersprungen: {1}"
+  }
+}
