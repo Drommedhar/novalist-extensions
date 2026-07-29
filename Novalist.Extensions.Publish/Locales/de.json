@@ -1,0 +1,8 @@
+{
+  "publish": {
+    "title": "Veröffentlichen",
+    "wrote": "{0} Seite(n) nach {1} geschrieben.",
+    "needsFolder": "Zum Veröffentlichen wird ein Zielordner benötigt.",
+    "cancelled": "Veröffentlichung abgebrochen."
+  }
+}

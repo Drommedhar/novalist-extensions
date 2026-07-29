@@ -1,0 +1,18 @@
+{
+  "id": "com.novalist.publish",
+  "name": "Publish",
+  "description": "Generates a self-contained static website from your world, your manuscript or both.",
+  "version": "1.0.0",
+  "author": "Novalist Team",
+  "entryAssembly": "Novalist.Extensions.Publish.dll",
+  "minHostVersion": "2.3.0",
+  "maxHostVersion": "",
+  "dependencies": [],
+  "tags": [
+    "publish",
+    "website",
+    "share",
+    "wiki"
+  ],
+  "contributes": {}
+}

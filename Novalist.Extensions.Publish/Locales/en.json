@@ -1,0 +1,8 @@
+{
+  "publish": {
+    "title": "Publish",
+    "wrote": "Wrote {0} page(s) to {1}.",
+    "needsFolder": "Publishing needs a folder to write into.",
+    "cancelled": "Publishing was cancelled."
+  }
+}

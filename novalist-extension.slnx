@@ -4,5 +4,6 @@
   </Folder>
   <Project Path="Novalist.Extensions.Formats/Novalist.Extensions.Formats.csproj" />
   <Project Path="Novalist.Extensions.Insight/Novalist.Extensions.Insight.csproj" />
+  <Project Path="Novalist.Extensions.Publish/Novalist.Extensions.Publish.csproj" />
   <Project Path="Novalist.Extensions.Toolkit/Novalist.Extensions.Toolkit.csproj" />
 </Solution>
