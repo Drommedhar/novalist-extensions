@@ -26,7 +26,7 @@ public sealed class ToolkitExtension :
     public string DisplayName => "Toolkit";
     public string Description =>
         "Writing sprints, a board over your to-do comments, dictionary and thesaurus lookup, "
-        + "and web page capture that keeps the readable text.";
+        + "an offline name generator, and web page capture that keeps the readable text.";
     public string Version { get; } = ManifestVersion.Read<ToolkitExtension>();
     public string Author => "Novalist Team";
 

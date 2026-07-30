@@ -52,6 +52,7 @@ internal sealed class BoardController(
             "tasks" => Reply("tasks", new { tasks = await TasksAsync() }),
             "taskDone" => Reply("tasks", new { tasks = await ResolveTaskAsync(root, true) }),
             "taskReopen" => Reply("tasks", new { tasks = await ResolveTaskAsync(root, false) }),
+            "names" => Reply("names", GenerateNames(root)),
             _ => Reply(kind, new { error = $"Unknown request \"{kind}\"." })
         };
     }
@@ -61,6 +62,31 @@ internal sealed class BoardController(
     {
         ["tabSprint"] = loc.T("toolkit.sprint"),
         ["tabTasks"] = loc.T("toolkit.tasks"),
+        ["tabNames"] = loc.T("toolkit.names"),
+
+        ["culture"] = loc.T("toolkit.culture"),
+        ["gender"] = loc.T("toolkit.gender"),
+        ["genderAny"] = loc.T("toolkit.genderAny"),
+        ["genderFeminine"] = loc.T("toolkit.genderFeminine"),
+        ["genderMasculine"] = loc.T("toolkit.genderMasculine"),
+        ["nameSource"] = loc.T("toolkit.nameSource"),
+        ["sourceInvented"] = loc.T("toolkit.sourceInvented"),
+        ["sourceAttested"] = loc.T("toolkit.sourceAttested"),
+        ["withSurname"] = loc.T("toolkit.withSurname"),
+        ["startsWith"] = loc.T("toolkit.startsWith"),
+        ["endsWith"] = loc.T("toolkit.endsWith"),
+        ["contains"] = loc.T("toolkit.contains"),
+        ["generate"] = loc.T("toolkit.generate"),
+        ["noNames"] = loc.T("toolkit.noNames"),
+        ["copyHint"] = loc.T("toolkit.copyHint"),
+        ["culture_english"] = loc.T("toolkit.culture_english"),
+        ["culture_germanic"] = loc.T("toolkit.culture_germanic"),
+        ["culture_norse"] = loc.T("toolkit.culture_norse"),
+        ["culture_slavic"] = loc.T("toolkit.culture_slavic"),
+        ["culture_romance"] = loc.T("toolkit.culture_romance"),
+        ["culture_celtic"] = loc.T("toolkit.culture_celtic"),
+        ["culture_arabic"] = loc.T("toolkit.culture_arabic"),
+        ["culture_japanese"] = loc.T("toolkit.culture_japanese"),
 
         ["start"] = loc.T("toolkit.start"),
         ["stop"] = loc.T("toolkit.stop"),
@@ -90,6 +116,40 @@ internal sealed class BoardController(
         ["onPhrase"] = loc.T("toolkit.onPhrase"),
         ["unreadable"] = loc.T("toolkit.unreadable"),
     };
+
+    // ── Names ──
+
+    /// <summary>
+    /// Names for the request the page sent.
+    ///
+    /// Unseeded: the whole point is a different set every time the writer
+    /// presses the button. Determinism belongs in the tests, which construct
+    /// <see cref="Names"/> with a seed of their own.
+    /// </summary>
+    private object GenerateNames(JsonElement root)
+    {
+        var request = new NameRequest
+        {
+            Culture = Text(root, "culture", "english"),
+            Gender = Text(root, "gender", string.Empty),
+            Source = Text(root, "source", "invented") == "attested"
+                ? NameSource.Attested
+                : NameSource.Invented,
+            Surname = !root.TryGetProperty("surname", out var sn)
+                      || sn.ValueKind != JsonValueKind.False,
+            StartsWith = Text(root, "startsWith", string.Empty),
+            EndsWith = Text(root, "endsWith", string.Empty),
+            Contains = Text(root, "contains", string.Empty),
+            Count = 12
+        };
+
+        return new { cultures = Names.Cultures, names = new Names().Generate(request) };
+    }
+
+    private static string Text(JsonElement root, string property, string fallback)
+        => root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? fallback
+            : fallback;
 
     private static string Reply(string kind, object payload)
         => JsonSerializer.Serialize(new ReplyEnvelope(kind, payload), Json);

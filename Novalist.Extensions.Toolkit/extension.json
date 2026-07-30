@@ -1,7 +1,7 @@
 {
   "id": "com.novalist.toolkit",
   "name": "Toolkit",
-  "description": "Writing sprints, a board over your to-do comments, dictionary and thesaurus lookup, and web page capture that keeps the readable text.",
+  "description": "Writing sprints, a board over your to-do comments, dictionary and thesaurus lookup, an offline name generator, and web page capture that keeps the readable text.",
   "version": "1.0.0",
   "author": "Novalist Team",
   "entryAssembly": "Novalist.Extensions.Toolkit.dll",
@@ -12,6 +12,7 @@
     "sprints",
     "tasks",
     "dictionary",
+    "names",
     "research"
   ],
   "contributes": {
