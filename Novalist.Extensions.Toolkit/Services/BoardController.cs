@@ -14,7 +14,8 @@ namespace Novalist.Extensions.Toolkit.Services;
 /// the comments and groups them; the comment stays the truth.
 /// </summary>
 internal sealed class BoardController(
-    IHostServices host, Sprint sprint, Action saveSprint) : IWebViewController
+    IHostServices host, Sprint sprint, Action saveSprint, IExtensionLocalization loc)
+    : IWebViewController
 {
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -35,7 +36,7 @@ internal sealed class BoardController(
         }
         catch (JsonException)
         {
-            return Reply("error", new { error = "That message was not readable." });
+            return Reply("error", new { error = loc.T("toolkit.unreadable") });
         }
 
         // Every sprint request answers as "sprint" and every task request as
@@ -43,6 +44,7 @@ internal sealed class BoardController(
         // so the kind is how the page knows which panel it is for.
         return kind switch
         {
+            "strings" => Reply(kind, new { strings = Strings() }),
             "sprint" => Reply("sprint", SprintState()),
             "sprintStart" => Reply("sprint", StartSprint()),
             "sprintStop" => Reply("sprint", StopSprint()),
@@ -53,6 +55,41 @@ internal sealed class BoardController(
             _ => Reply(kind, new { error = $"Unknown request \"{kind}\"." })
         };
     }
+
+    /// <summary>Every label the board shows, so the page holds no English.</summary>
+    private Dictionary<string, string> Strings() => new()
+    {
+        ["tabSprint"] = loc.T("toolkit.sprint"),
+        ["tabTasks"] = loc.T("toolkit.tasks"),
+
+        ["start"] = loc.T("toolkit.start"),
+        ["stop"] = loc.T("toolkit.stop"),
+        ["write"] = loc.T("toolkit.write"),
+        ["rest"] = loc.T("toolkit.rest"),
+        ["minutes"] = loc.T("toolkit.minutes"),
+        ["notRunning"] = loc.T("toolkit.notRunning"),
+        ["resting"] = loc.T("toolkit.resting"),
+        ["progress"] = loc.T("toolkit.progress"),
+
+        ["statSprints"] = loc.T("toolkit.statSprints"),
+        ["statWords"] = loc.T("toolkit.statWords"),
+        ["statMinutes"] = loc.T("toolkit.statMinutes"),
+        ["statRate"] = loc.T("toolkit.statRate"),
+
+        ["finished"] = loc.T("toolkit.finished"),
+        ["noSprints"] = loc.T("toolkit.noSprints"),
+        ["colStarted"] = loc.T("toolkit.colStarted"),
+        ["colMinutes"] = loc.T("toolkit.colMinutes"),
+        ["colWords"] = loc.T("toolkit.colWords"),
+        ["colRate"] = loc.T("toolkit.colRate"),
+
+        ["showDone"] = loc.T("toolkit.showDone"),
+        ["openOf"] = loc.T("toolkit.openOf"),
+        ["allDone"] = loc.T("toolkit.allDone"),
+        ["noComments"] = loc.T("toolkit.noComments"),
+        ["onPhrase"] = loc.T("toolkit.onPhrase"),
+        ["unreadable"] = loc.T("toolkit.unreadable"),
+    };
 
     private static string Reply(string kind, object payload)
         => JsonSerializer.Serialize(new ReplyEnvelope(kind, payload), Json);

@@ -33,16 +33,18 @@ public sealed class InsightExtension : IExtension, IWebViewContributor
     public string Author => "Novalist Team";
 
     private IHostServices _host = null!;
+    private IExtensionLocalization _loc = null!;
 
     public void Initialize(IHostServices host)
     {
         _host = host;
+        _loc = host.GetLocalization(Id);
         _host.RegisterCommand(
             new HostCommandInfo
             {
                 Id = "com.novalist.insight.open",
-                Title = "Open the Insight reports",
-                Description = "Name drift, project health, continuity, concordance and pacing.",
+                Title = _loc.T("insight.command"),
+                Description = _loc.T("insight.commandDesc"),
                 Mutates = false
             },
             _ =>
@@ -66,6 +68,8 @@ public sealed class InsightExtension : IExtension, IWebViewContributor
 /// </summary>
 internal sealed class ReportController(IHostServices host, string extensionId) : IWebViewController
 {
+    private readonly IExtensionLocalization _loc = host.GetLocalization(extensionId);
+
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -85,14 +89,20 @@ internal sealed class ReportController(IHostServices host, string extensionId) :
         }
         catch (JsonException)
         {
-            return Reply("error", new { error = "That message was not readable." });
+            return Reply("error", new { error = _loc.T("insight.unreadable") });
         }
 
-        if (!host.ProjectService.IsProjectLoaded)
-            return Reply(kind, new { error = "Open a project first." });
+        // The strings request works with no project open: the panel has to be
+        // able to label its own "open a project" message.
+        if (kind != "strings" && !host.ProjectService.IsProjectLoaded)
+            return Reply(kind, new { error = _loc.T("insight.noProject") });
 
         return kind switch
         {
+            // Sent once when the page opens. Every label the panel shows comes
+            // from here, so it follows the project language rather than holding
+            // English of its own.
+            "strings" => Reply(kind, new { strings = Strings() }),
             "health" => Reply(kind, new { findings = await HealthAsync() }),
             "drift" => Reply(kind, new { findings = await DriftAsync() }),
             "concordance" => Reply(kind, await ConcordanceAsync(root)),
@@ -112,6 +122,55 @@ internal sealed class ReportController(IHostServices host, string extensionId) :
     /// continuity mutations answer as "continuity" because that is the panel
     /// waiting for them.
     /// </summary>
+    /// <summary>
+    /// Every string the panel needs, by the key the page asks for. Kept in one
+    /// place so a label that has no translation shows up here rather than in the
+    /// middle of the markup.
+    /// </summary>
+    private Dictionary<string, string> Strings() => new()
+    {
+        ["tabHealth"] = _loc.T("insight.health"),
+        ["tabDrift"] = _loc.T("insight.drift"),
+        ["tabContinuity"] = _loc.T("insight.continuity"),
+        ["tabConcordance"] = _loc.T("insight.concordance"),
+        ["tabPacing"] = _loc.T("insight.pacing"),
+
+        ["reading"] = _loc.T("insight.reading"),
+        ["noProject"] = _loc.T("insight.noProject"),
+        ["unreadable"] = _loc.T("insight.unreadable"),
+
+        ["healthClean"] = _loc.T("insight.healthClean"),
+        ["driftNone"] = _loc.T("insight.driftNone"),
+        ["driftHint"] = _loc.T("insight.driftHint"),
+        ["driftFound"] = _loc.T("insight.driftFound"),
+        ["driftKnown"] = _loc.T("insight.driftKnown"),
+        ["driftTimes"] = _loc.T("insight.driftTimes"),
+        ["driftScenes"] = _loc.T("insight.driftScenes"),
+
+        ["continuityRebase"] = _loc.T("insight.continuityRebase"),
+        ["continuityTracked"] = _loc.T("insight.continuityTracked"),
+        ["continuityBaseline"] = _loc.T("insight.continuityBaseline"),
+        ["continuityClear"] = _loc.T("insight.continuityClear"),
+        ["continuityHint"] = _loc.T("insight.continuityHint"),
+        ["continuityRead"] = _loc.T("insight.continuityRead"),
+
+        ["concordanceStop"] = _loc.T("insight.concordanceStop"),
+        ["concordanceCount"] = _loc.T("insight.concordanceCount"),
+        ["concordanceDistinct"] = _loc.T("insight.concordanceDistinct"),
+        ["concordanceHabits"] = _loc.T("insight.concordanceHabits"),
+        ["concordanceNoHabits"] = _loc.T("insight.concordanceNoHabits"),
+        ["concordanceAll"] = _loc.T("insight.concordanceAll"),
+        ["colWord"] = _loc.T("insight.colWord"),
+        ["colTimes"] = _loc.T("insight.colTimes"),
+        ["colScenes"] = _loc.T("insight.colScenes"),
+
+        ["pacingNone"] = _loc.T("insight.pacingNone"),
+        ["pacingSuggests"] = _loc.T("insight.pacingSuggests"),
+        ["pacingNothing"] = _loc.T("insight.pacingNothing"),
+        ["pacingUnrated"] = _loc.T("insight.pacingUnrated"),
+        ["pacingIntensity"] = _loc.T("insight.pacingIntensity"),
+    };
+
     private static string Reply(string kind, object payload)
         => JsonSerializer.Serialize(new ReplyEnvelope(kind, payload), Json);
 

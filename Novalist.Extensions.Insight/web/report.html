@@ -73,14 +73,14 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 </head>
 <body>
 <div id="tabs">
-  <button class="tab active" data-kind="health">Project health</button>
-  <button class="tab" data-kind="drift">Name drift</button>
-  <button class="tab" data-kind="continuity">Continuity</button>
-  <button class="tab" data-kind="concordance">Word frequency</button>
-  <button class="tab" data-kind="pacing">Pacing</button>
+  <button class="tab active" data-kind="health" data-t="tabHealth"></button>
+  <button class="tab" data-kind="drift" data-t="tabDrift"></button>
+  <button class="tab" data-kind="continuity" data-t="tabContinuity"></button>
+  <button class="tab" data-kind="concordance" data-t="tabConcordance"></button>
+  <button class="tab" data-kind="pacing" data-t="tabPacing"></button>
 </div>
 <div id="toolbar"></div>
-<div id="body"><p class="hint">Reading the manuscript...</p></div>
+<div id="body"></div>
 
 <script>
 // The host relays a controller's reply back into the frame with nothing tying
@@ -94,12 +94,20 @@ const bodyEl = document.getElementById('body');
 const toolbarEl = document.getElementById('toolbar');
 let current = 'health';
 
+// Every label comes from the host, so this page holds no English of its own and
+// follows the project language.
+let S = {};
+const t = (key, ...args) => {
+  let text = S[key] || '';
+  args.forEach((a, i) => { text = text.replace('{' + i + '}', String(a)); });
+  return text;
+};
+
 const escape = (s) => String(s ?? '').replace(/[&<>"]/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-function busy(what) {
-  bodyEl.innerHTML = '<p class="hint">Reading the manuscript' +
-    (what ? ' for ' + escape(what) : '') + '...</p>';
+function busy() {
+  bodyEl.innerHTML = '<p class="hint">' + escape(t('reading')) + '</p>';
 }
 
 function failed(message) {
@@ -120,19 +128,17 @@ function findingList(findings, emptyMessage) {
 const draw = {
   health(p) {
     if (p.error) return failed(p.error);
-    bodyEl.innerHTML = findingList(p.findings, 'Nothing to report. The project is tidy.');
+    bodyEl.innerHTML = findingList(p.findings, t('healthClean'));
   },
 
   drift(p) {
     if (p.error) return failed(p.error);
-    if (!p.findings || !p.findings.length) {
-      return failed('No spellings close to a Codex name. Nothing has drifted.');
-    }
+    if (!p.findings || !p.findings.length) return failed(t('driftNone'));
     bodyEl.innerHTML =
-      '<p class="hint">Each of these is spelled almost like a name in the Codex. Some will ' +
-      'be two different names that happen to be similar.</p>' +
-      '<table><thead><tr><th>In the prose</th><th>Codex name</th>' +
-      '<th class="num">Times</th><th>Scenes</th></tr></thead><tbody>' +
+      '<p class="hint">' + escape(t('driftHint')) + '</p>' +
+      '<table><thead><tr><th>' + escape(t('driftFound')) + '</th><th>' +
+      escape(t('driftKnown')) + '</th><th class="num">' + escape(t('driftTimes')) +
+      '</th><th>' + escape(t('driftScenes')) + '</th></tr></thead><tbody>' +
       p.findings.map((f) =>
         '<tr><td><strong>' + escape(f.found) + '</strong></td><td>' + escape(f.known) +
         '</td><td class="num">' + f.occurrences + '</td><td>' +
@@ -144,35 +150,31 @@ const draw = {
     if (p.error) return failed(p.error);
 
     toolbarEl.innerHTML =
-      '<button id="rebase">Mark everything up to date</button>' +
-      '<span class="hint" style="margin:0">' + (p.tracked ?? 0) + ' entries tracked</span>';
+      '<button id="rebase">' + escape(t('continuityRebase')) + '</button>' +
+      '<span class="hint" style="margin:0">' + escape(t('continuityTracked', p.tracked ?? 0)) +
+      '</span>';
     document.getElementById('rebase').onclick = () => {
-      busy('continuity');
+      busy();
       post({ kind: 'continuityRebase' });
     };
 
-    if (p.baseline) {
-      return failed('Recorded what every Codex entry looks like now. From here on, this lists ' +
-        'the scenes that mention anything you change.');
-    }
-    if (!p.items || !p.items.length) {
-      return failed('Nothing has changed since you last worked through this list.');
-    }
+    if (p.baseline) return failed(t('continuityBaseline'));
+    if (!p.items || !p.items.length) return failed(t('continuityClear'));
 
     bodyEl.innerHTML =
-      '<p class="hint">These scenes mention something you have changed since they were last ' +
-      'read. Whether the change matters is your call.</p>' +
+      '<p class="hint">' + escape(t('continuityHint')) + '</p>' +
       '<ul class="findings">' + p.items.map((item) =>
         '<li class="finding ' + (item.reviewed ? 'Note done' : 'Warning') + '">' +
           '<div class="category">' + escape((item.changedEntities || []).join(', ')) + '</div>' +
           escape(item.chapterTitle + ' / ' + item.sceneTitle) +
           (item.reviewed ? '' :
-            '<button data-scene="' + escape(item.sceneId) + '">Read it</button>') +
+            '<button data-scene="' + escape(item.sceneId) + '">' +
+              escape(t('continuityRead')) + '</button>') +
         '</li>').join('') + '</ul>';
 
     bodyEl.querySelectorAll('button[data-scene]').forEach((button) => {
       button.onclick = () => {
-        busy('continuity');
+        busy();
         post({ kind: 'continuityReviewed', sceneId: button.dataset.scene });
       };
     });
@@ -182,39 +184,39 @@ const draw = {
     if (p.error) return failed(p.error);
 
     const table = (words) =>
-      '<table><thead><tr><th>Word</th><th class="num">Times</th>' +
-      '<th class="num">Scenes</th></tr></thead><tbody>' +
+      '<table><thead><tr><th>' + escape(t('colWord')) + '</th><th class="num">' +
+      escape(t('colTimes')) + '</th><th class="num">' + escape(t('colScenes')) +
+      '</th></tr></thead><tbody>' +
       (words || []).map((w) => '<tr><td>' + escape(w.word) + '</td><td class="num">' +
         w.count + '</td><td class="num">' + w.scenes + '</td></tr>').join('') +
       '</tbody></table>';
 
     bodyEl.innerHTML =
-      '<p class="hint">' + (p.distinct ?? 0) + ' distinct words. The interesting ones are ' +
-      'usually not at the top.</p>' +
-      '<h3>Used across several scenes</h3>' +
+      '<p class="hint">' + escape(t('concordanceDistinct', p.distinct ?? 0)) + '</p>' +
+      '<h3>' + escape(t('concordanceHabits')) + '</h3>' +
       ((p.habits && p.habits.length)
         ? table(p.habits)
-        : '<p class="empty">Nothing used often enough across enough scenes.</p>') +
-      '<h3>Everything, by count</h3>' + table(p.words);
+        : '<p class="empty">' + escape(t('concordanceNoHabits')) + '</p>') +
+      '<h3>' + escape(t('concordanceAll')) + '</h3>' + table(p.words);
   },
 
   pacing(p) {
     if (p.error) return failed(p.error);
-    if (!p.points || !p.points.length) return failed('No scenes to chart yet.');
+    if (!p.points || !p.points.length) return failed(t('pacingNone'));
 
     const highest = Math.max(1, ...p.points.map((s) => s.intensity ?? 0));
     bodyEl.innerHTML =
       '<div class="chart">' + p.points.map((s) => {
         const height = s.intensity == null ? 4 : Math.max(4, (s.intensity / highest) * 100);
-        const title = s.chapterTitle + ' / ' + s.sceneTitle +
-          (s.intensity == null ? ' (no intensity set)' : ' - intensity ' + s.intensity);
+        const title = s.chapterTitle + ' / ' + s.sceneTitle + ' - ' +
+          (s.intensity == null ? t('pacingUnrated') : t('pacingIntensity') + ' ' + s.intensity);
         return '<div class="bar' + (s.intensity == null ? ' unrated' : '') +
           '" style="height:' + height + '%" title="' + escape(title) + '"></div>';
       }).join('') + '</div>' +
       '<div class="scale"><span>' + escape(p.points[0].chapterTitle) + '</span><span>' +
       escape(p.points[p.points.length - 1].chapterTitle) + '</span></div>' +
-      '<h3>What that suggests</h3>' +
-      findingList(p.observations, 'Nothing worth pointing at.');
+      '<h3>' + escape(t('pacingSuggests')) + '</h3>' +
+      findingList(p.observations, t('pacingNothing'));
   }
 };
 
@@ -231,7 +233,21 @@ window.addEventListener('message', (event) => {
 
   // A reply for a tab the writer has since left is dropped rather than drawn
   // over whatever they are now looking at.
-  if (!msg || msg.kind !== current) return;
+  if (!msg) return;
+
+  // The labels arrive once, before anything is drawn.
+  if (msg.kind === 'strings') {
+    S = (msg.payload && msg.payload.strings) || {};
+    document.querySelectorAll('[data-t]').forEach((el) => {
+      el.textContent = t(el.dataset.t);
+    });
+    show('health');
+    return;
+  }
+
+  // A reply for a tab the writer has since left is dropped rather than drawn
+  // over whatever they are now looking at.
+  if (msg.kind !== current) return;
   const render = draw[msg.kind];
   if (render) render(msg.payload || {});
 });
@@ -244,11 +260,11 @@ function show(kind) {
 
   if (kind === 'concordance') {
     toolbarEl.innerHTML =
-      '<input type="text" id="stop" placeholder="Words to ignore, comma separated">' +
-      '<button id="count">Count</button>';
+      '<input type="text" id="stop" placeholder="' + escape(t('concordanceStop')) + '">' +
+      '<button id="count">' + escape(t('concordanceCount')) + '</button>';
     const run = () => {
       const raw = document.getElementById('stop').value.trim();
-      busy('word frequency');
+      busy();
       post(raw.length
         ? { kind: 'concordance', stopWords: raw.split(',').map((w) => w.trim()).filter(Boolean) }
         : { kind: 'concordance' });
@@ -258,12 +274,7 @@ function show(kind) {
     return;
   }
 
-  busy({
-    health: 'problems',
-    drift: 'near-miss names',
-    continuity: 'continuity',
-    pacing: 'the shape of the book'
-  }[kind]);
+  busy();
   post({ kind });
 }
 
@@ -271,7 +282,9 @@ document.querySelectorAll('.tab').forEach((tab) => {
   tab.onclick = () => show(tab.dataset.kind);
 });
 
-show('health');
+// Labels first: everything else waits on them, because a panel that renders in
+// English and then swaps to German is worse than one that waits a beat.
+post({ kind: 'strings' });
 </script>
 </body>
 </html>

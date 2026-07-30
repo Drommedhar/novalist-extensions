@@ -33,6 +33,7 @@ public sealed class ToolkitExtension :
     private IHostServices _host = null!;
     private Sprint _sprint = new();
     private Lookup _lookup = null!;
+    private IExtensionLocalization _loc = null!;
 
     private string SprintPath => Path.Combine(
         _host.GetExtensionSettingsPath(Id), "sprints.json");
@@ -40,6 +41,7 @@ public sealed class ToolkitExtension :
     public void Initialize(IHostServices host)
     {
         _host = host;
+        _loc = host.GetLocalization(Id);
         _lookup = new Lookup();
         _sprint = Sprint.Load(File.Exists(SprintPath) ? File.ReadAllText(SprintPath) : null);
 
@@ -93,8 +95,8 @@ public sealed class ToolkitExtension :
             Order = 40,
             GetText = () => _sprint.Snapshot(DateTimeOffset.UtcNow).Label,
             GetTooltip = () => _sprint.Phase == SprintPhase.Idle
-                ? "Start a writing sprint"
-                : "Open the sprint panel",
+                ? _loc.T("toolkit.sprintStartTip")
+                : _loc.T("toolkit.sprintOpenTip"),
             OnClick = () => _host.ActivateContentView(BoardView),
             // The host refreshes the bar on a timer, which is also the tick the
             // sprint needs; a second timer inside the extension would be one more
@@ -113,15 +115,15 @@ public sealed class ToolkitExtension :
         new InlineActionDescriptor
         {
             Id = "toolkit.define",
-            Label = "Define",
-            Group = "Look up",
+            Label = _loc.T("toolkit.define"),
+            Group = _loc.T("toolkit.lookUp"),
             Priority = 10
         },
         new InlineActionDescriptor
         {
             Id = "toolkit.synonyms",
-            Label = "Synonyms",
-            Group = "Look up",
+            Label = _loc.T("toolkit.synonyms"),
+            Group = _loc.T("toolkit.lookUp"),
             Priority = 20
         }
     ];
@@ -139,9 +141,9 @@ public sealed class ToolkitExtension :
     {
         var word = (request.SelectedText ?? string.Empty).Trim();
         if (word.Length == 0)
-            return new InlineActionResult { Error = "Select a word first." };
+            return new InlineActionResult { Error = _loc.T("toolkit.selectWord") };
         if (word.Contains(' '))
-            return new InlineActionResult { Error = "Select a single word." };
+            return new InlineActionResult { Error = _loc.T("toolkit.selectOneWord") };
 
         try
         {
@@ -155,11 +157,14 @@ public sealed class ToolkitExtension :
         }
         catch (OperationCanceledException)
         {
-            return new InlineActionResult { Error = "Cancelled." };
+            return new InlineActionResult { Error = _loc.T("toolkit.cancelled") };
         }
         catch (HttpRequestException ex)
         {
-            return new InlineActionResult { Error = $"Could not reach the dictionary: {ex.Message}" };
+            return new InlineActionResult
+            {
+                Error = _loc.T("toolkit.noDictionary").Replace("{0}", ex.Message)
+            };
         }
     }
 
@@ -170,7 +175,7 @@ public sealed class ToolkitExtension :
     /// </summary>
     private InlineActionResult Definition(IReadOnlyList<string> senses)
         => senses.Count == 0
-            ? new InlineActionResult { Error = "No definition found." }
+            ? new InlineActionResult { Error = _loc.T("toolkit.noDefinition") }
             : new InlineActionResult
             {
                 Text = string.Join("  ", senses.Select((s, i) => $"{i + 1}. {s}")),
@@ -178,9 +183,9 @@ public sealed class ToolkitExtension :
                 Alternatives = [.. senses]
             };
 
-    private static InlineActionResult Synonyms(string word, IReadOnlyList<string> synonyms)
+    private InlineActionResult Synonyms(string word, IReadOnlyList<string> synonyms)
         => synonyms.Count == 0
-            ? new InlineActionResult { Error = $"No synonyms found for \"{word}\"." }
+            ? new InlineActionResult { Error = _loc.T("toolkit.noSynonyms").Replace("{0}", word) }
             : new InlineActionResult
             {
                 Text = synonyms[0],
@@ -207,13 +212,14 @@ public sealed class ToolkitExtension :
             new HostCommandInfo
             {
                 Id = CommandIds[0],
-                Title = "Start a writing sprint",
-                Description = "Times a stretch of writing and counts the words written in it."
+                Title = _loc.T("toolkit.cmdSprintStart"),
+                Description = _loc.T("toolkit.cmdSprintStartDesc")
             },
             _ =>
             {
                 _sprint.Start(ProjectWords(), DateTimeOffset.UtcNow);
-                _host.ShowNotification($"Sprint started: {_sprint.WritingMinutes} minutes.");
+                _host.ShowNotification(_loc.T("toolkit.sprintStarted")
+                    .Replace("{0}", _sprint.WritingMinutes.ToString()));
                 return Task.CompletedTask;
             });
 
@@ -221,16 +227,18 @@ public sealed class ToolkitExtension :
             new HostCommandInfo
             {
                 Id = CommandIds[1],
-                Title = "Stop the writing sprint",
-                Description = "Ends the sprint and records what was written in it."
+                Title = _loc.T("toolkit.cmdSprintStop"),
+                Description = _loc.T("toolkit.cmdSprintStopDesc")
             },
             _ =>
             {
                 var record = _sprint.Stop(DateTimeOffset.UtcNow);
                 SaveSprint();
                 _host.ShowNotification(record == null
-                    ? "No sprint was running."
-                    : $"{record.Words} words in {record.Minutes} minute(s).");
+                    ? _loc.T("toolkit.noSprintRunning")
+                    : _loc.T("toolkit.sprintDone")
+                        .Replace("{0}", record.Words.ToString())
+                        .Replace("{1}", record.Minutes.ToString()));
                 return Task.CompletedTask;
             });
 
@@ -238,8 +246,8 @@ public sealed class ToolkitExtension :
             new HostCommandInfo
             {
                 Id = CommandIds[2],
-                Title = "Open the Toolkit board",
-                Description = "Sprints and the to-do board."
+                Title = _loc.T("toolkit.cmdBoard"),
+                Description = _loc.T("toolkit.cmdBoardDesc")
             },
             _ =>
             {
@@ -251,8 +259,8 @@ public sealed class ToolkitExtension :
             new HostCommandInfo
             {
                 Id = CommandIds[3],
-                Title = "Capture a web page as research",
-                Description = "Fetches a page, keeps its readable text, and files it as a note.",
+                Title = _loc.T("toolkit.cmdCapture"),
+                Description = _loc.T("toolkit.cmdCaptureDesc"),
                 Mutates = true,
                 ArgumentsSchema =
                     """
@@ -286,7 +294,7 @@ public sealed class ToolkitExtension :
         }
         catch (JsonException)
         {
-            _host.ShowNotification("That capture request was not readable.");
+            _host.ShowNotification(_loc.T("toolkit.captureUnreadable"));
             return;
         }
 
@@ -294,13 +302,13 @@ public sealed class ToolkitExtension :
             || !Uri.TryCreate(url, UriKind.Absolute, out var address)
             || (address.Scheme != Uri.UriSchemeHttp && address.Scheme != Uri.UriSchemeHttps))
         {
-            _host.ShowNotification("Capture needs an http or https address.");
+            _host.ShowNotification(_loc.T("toolkit.captureNeedsUrl"));
             return;
         }
 
         using var progress = _host.ShowBusyProgress(new BusyProgressOptions
         {
-            Title = "Capturing",
+            Title = _loc.T("toolkit.capturing"),
             InitialStatus = address.Host,
             IsIndeterminate = true,
             AllowCancel = true
@@ -317,7 +325,8 @@ public sealed class ToolkitExtension :
         }
         catch (HttpRequestException ex)
         {
-            _host.ShowNotification($"Could not fetch that page: {ex.Message}");
+            _host.ShowNotification(
+                _loc.T("toolkit.captureFailed").Replace("{0}", ex.Message));
             return;
         }
 
@@ -330,13 +339,15 @@ public sealed class ToolkitExtension :
         });
 
         progress.Dispose();
-        _host.ShowNotification($"Captured \"{page.Title}\".");
+        _host.ShowNotification(_loc.T("toolkit.captured").Replace("{0}", page.Title));
     }
 
     // ── The board view ──
 
     public IWebViewController? CreateController(string viewKey)
-        => viewKey == BoardView ? new BoardController(_host, _sprint, SaveSprint) : null;
+        => viewKey == BoardView
+            ? new BoardController(_host, _sprint, SaveSprint, _host.GetLocalization(Id))
+            : null;
 }
 
 internal static class ManifestVersion

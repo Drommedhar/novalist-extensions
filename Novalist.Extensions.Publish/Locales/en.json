@@ -1,8 +1,34 @@
 {
   "publish": {
-    "title": "Publish",
-    "wrote": "Wrote {0} page(s) to {1}.",
+    "cancelled": "Publishing was cancelled.",
+    "command": "Publish a website",
+    "commandDesc": "Writes a folder of HTML you can share or host.",
+    "folderHelp": "Files with the same names in that folder are replaced.",
+    "folderTitle": "Where to write it",
     "needsFolder": "Publishing needs a folder to write into.",
-    "cancelled": "Publishing was cancelled."
+    "noFolderChosen": "No folder was chosen, so nothing was written.",
+    "noProject": "Open a project first.",
+    "pickTitle": "Where to publish the site",
+    "publishing": "Publishing",
+    "readingProject": "Reading the project",
+    "scopeBoth": "Both",
+    "scopeBothDesc": "The manuscript with the world cross-linked into it.",
+    "scopeHelp": "A world bible for readers, the manuscript to be read, or both.",
+    "scopeManuscript": "The manuscript",
+    "scopeManuscriptDesc": "Chapters and scenes, laid out to be read.",
+    "scopeTitle": "What to publish",
+    "scopeWorld": "The world",
+    "scopeWorldDesc": "Codex entries only - a series bible.",
+    "subtitleHelp": "Optional. One line under the title on the front page.",
+    "subtitleTitle": "Subtitle",
+    "title": "Publish",
+    "titleHelp": "Shown at the top of every page.",
+    "titlePlaceholder": "The name of the book or the series",
+    "titleTitle": "Site title",
+    "unreadable": "That publish request was not readable.",
+    "wizardDesc": "Writes a folder of HTML from your world, your manuscript or both. Nothing is uploaded anywhere - you get a folder.",
+    "writeFailed": "Could not write the site: {0}",
+    "writingPages": "Writing pages",
+    "wrote": "Wrote {0} page(s) to {1}."
   }
 }

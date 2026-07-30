@@ -1,8 +1,34 @@
 {
   "publish": {
-    "title": "Veröffentlichen",
-    "wrote": "{0} Seite(n) nach {1} geschrieben.",
+    "cancelled": "Veröffentlichung abgebrochen.",
+    "command": "Website veröffentlichen",
+    "commandDesc": "Schreibt einen Ordner mit HTML, den Sie teilen oder hosten können.",
+    "folderHelp": "Dateien mit gleichem Namen in diesem Ordner werden ersetzt.",
+    "folderTitle": "Wohin geschrieben wird",
     "needsFolder": "Zum Veröffentlichen wird ein Zielordner benötigt.",
-    "cancelled": "Veröffentlichung abgebrochen."
+    "noFolderChosen": "Es wurde kein Ordner gewählt, daher wurde nichts geschrieben.",
+    "noProject": "Öffnen Sie zuerst ein Projekt.",
+    "pickTitle": "Wohin die Website veröffentlicht wird",
+    "publishing": "Wird veröffentlicht",
+    "readingProject": "Projekt wird gelesen",
+    "scopeBoth": "Beides",
+    "scopeBothDesc": "Das Manuskript mit der Welt darin verlinkt.",
+    "scopeHelp": "Eine Weltbibel für Leser, das Manuskript zum Lesen, oder beides.",
+    "scopeManuscript": "Das Manuskript",
+    "scopeManuscriptDesc": "Kapitel und Szenen, zum Lesen gesetzt.",
+    "scopeTitle": "Was veröffentlicht wird",
+    "scopeWorld": "Die Welt",
+    "scopeWorldDesc": "Nur Codex-Einträge - eine Weltbibel.",
+    "subtitleHelp": "Optional. Eine Zeile unter dem Titel auf der Startseite.",
+    "subtitleTitle": "Untertitel",
+    "title": "Veröffentlichen",
+    "titleHelp": "Wird oben auf jeder Seite angezeigt.",
+    "titlePlaceholder": "Der Name des Buches oder der Reihe",
+    "titleTitle": "Titel der Website",
+    "unreadable": "Diese Veröffentlichungsanfrage war nicht lesbar.",
+    "wizardDesc": "Schreibt einen HTML-Ordner aus Ihrer Welt, Ihrem Manuskript oder beidem. Nichts wird irgendwohin hochgeladen - Sie erhalten einen Ordner.",
+    "writeFailed": "Website konnte nicht geschrieben werden: {0}",
+    "writingPages": "Seiten werden geschrieben",
+    "wrote": "{0} Seite(n) nach {1} geschrieben."
   }
 }

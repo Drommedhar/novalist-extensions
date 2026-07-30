@@ -81,21 +81,25 @@ li.task.done { opacity: .5; border-left-color: var(--border); }
 </head>
 <body>
 <div id="tabs">
-  <button class="tab active" data-panel="sprint">Sprint</button>
-  <button class="tab" data-panel="tasks">To-do</button>
+  <button class="tab active" data-panel="sprint" data-t="tabSprint"></button>
+  <button class="tab" data-panel="tasks" data-t="tabTasks"></button>
 </div>
 
 <section id="sprint" class="panel">
   <div class="column">
     <div class="clock" id="clock">--:--</div>
-    <div class="phase" id="phase">Not running</div>
+    <div class="phase" id="phase"></div>
     <div class="row">
-      <button class="primary" id="startStop">Start</button>
-      <label>Write <input type="number" id="writing" min="1" max="180" value="25"> min</label>
-      <label>Rest <input type="number" id="resting" min="1" max="60" value="5"> min</label>
+      <button class="primary" id="startStop"></button>
+      <label><span data-t="write"></span>
+        <input type="number" id="writing" min="1" max="180" value="25">
+        <span data-t="minutes"></span></label>
+      <label><span data-t="rest"></span>
+        <input type="number" id="resting" min="1" max="60" value="5">
+        <span data-t="minutes"></span></label>
     </div>
     <div class="stats" id="stats"></div>
-    <h3>Finished sprints</h3>
+    <h3 data-t="finished"></h3>
     <div id="history"></div>
   </div>
 </section>
@@ -103,7 +107,7 @@ li.task.done { opacity: .5; border-left-color: var(--border); }
 <section id="tasks" class="panel hidden">
   <div class="column">
     <div class="row" style="justify-content:flex-start">
-      <label><input type="checkbox" id="showDone"> Show finished</label>
+      <label><input type="checkbox" id="showDone"> <span data-t="showDone"></span></label>
       <span class="hint" id="taskCount"></span>
     </div>
     <div id="taskList"></div>
@@ -119,6 +123,14 @@ function post(msg) {
 
 const escape = (s) => String(s ?? '').replace(/[&<>"]/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// Every label comes from the host, so this page holds no English of its own.
+let S = {};
+const t = (key, ...args) => {
+  let text = S[key] || '';
+  args.forEach((a, i) => { text = text.replace('{' + i + '}', String(a)); });
+  return text;
+};
 
 const clock = document.getElementById('clock');
 const phase = document.getElementById('phase');
@@ -144,23 +156,24 @@ function drawSprint(s) {
   clock.classList.toggle('resting', s.phase === 'Resting');
 
   phase.textContent =
-    s.phase === 'Writing' ? s.wordsSoFar + ' words so far, ' + s.wordsPerMinute + ' a minute'
-    : s.phase === 'Resting' ? 'Resting'
-    : 'Not running';
+    s.phase === 'Writing' ? t('progress', s.wordsSoFar, s.wordsPerMinute)
+    : s.phase === 'Resting' ? t('resting')
+    : t('notRunning');
 
-  startStop.textContent = running ? 'Stop' : 'Start';
+  startStop.textContent = running ? t('stop') : t('start');
   // Only while nothing is running: overwriting the boxes as somebody types in
   // them is how a field fights the person filling it in.
   if (!running && document.activeElement !== writing) writing.value = s.writingMinutes;
   if (!running && document.activeElement !== resting) resting.value = s.restingMinutes;
 
   document.getElementById('stats').innerHTML =
-    stat(s.completed, 'sprints') + stat(s.totalWords, 'words') +
-    stat(s.totalMinutes, 'minutes') + stat(s.averageRate, 'words a minute');
+    stat(s.completed, t('statSprints')) + stat(s.totalWords, t('statWords')) +
+    stat(s.totalMinutes, t('statMinutes')) + stat(s.averageRate, t('statRate'));
 
   document.getElementById('history').innerHTML = (s.history && s.history.length)
-    ? '<table><thead><tr><th>Started</th><th class="num">Minutes</th>' +
-      '<th class="num">Words</th><th class="num">A minute</th></tr></thead><tbody>' +
+    ? '<table><thead><tr><th>' + escape(t('colStarted')) + '</th><th class="num">' +
+      escape(t('colMinutes')) + '</th><th class="num">' + escape(t('colWords')) +
+      '</th><th class="num">' + escape(t('colRate')) + '</th></tr></thead><tbody>' +
       s.history.map((h) => {
         const when = new Date(h.startedAt);
         const rate = h.minutes > 0 ? Math.round(h.words / h.minutes) : 0;
@@ -168,7 +181,7 @@ function drawSprint(s) {
           '</td><td class="num">' + h.minutes + '</td><td class="num">' + h.words +
           '</td><td class="num">' + rate + '</td></tr>';
       }).join('') + '</tbody></table>'
-    : '<p class="empty">No sprints yet.</p>';
+    : '<p class="empty">' + escape(t('noSprints')) + '</p>';
 }
 
 function drawTasks(payload) {
@@ -180,23 +193,25 @@ function drawTasks(payload) {
 
   const shown = showDone.checked ? tasks : tasks.filter((t) => !t.done);
   const open = tasks.filter((t) => !t.done).length;
-  document.getElementById('taskCount').textContent = open + ' open of ' + tasks.length;
+  document.getElementById('taskCount').textContent = t('openOf', open, tasks.length);
 
   if (!shown.length) {
     taskList.innerHTML = '<p class="empty">' +
-      (tasks.length ? 'Nothing open. Everything is ticked off.'
-                    : 'No comments yet. Leave one on a passage and it appears here.') + '</p>';
+      escape(tasks.length ? t('allDone') : t('noComments')) + '</p>';
     return;
   }
 
-  taskList.innerHTML = '<ul>' + shown.map((t, i) =>
-    '<li class="task' + (t.done ? ' done' : '') + '">' +
-      '<input type="checkbox" data-index="' + i + '"' + (t.done ? ' checked' : '') + '>' +
+  // Named task rather than t, because t is the translator here and shadowing it
+  // inside the loop is how a label silently becomes a task field.
+  taskList.innerHTML = '<ul>' + shown.map((task, i) =>
+    '<li class="task' + (task.done ? ' done' : '') + '">' +
+      '<input type="checkbox" data-index="' + i + '"' + (task.done ? ' checked' : '') + '>' +
       '<div class="task-body">' +
-        '<div>' + escape(t.text) + '</div>' +
-        (t.anchor ? '<div class="task-anchor">on "' + escape(t.anchor) + '"</div>' : '') +
-        '<div class="task-where">' + escape(t.chapterTitle + ' / ' + t.sceneTitle) +
-          (t.author ? ' - ' + escape(t.author) : '') + '</div>' +
+        '<div>' + escape(task.text) + '</div>' +
+        (task.anchor
+          ? '<div class="task-anchor">' + escape(t('onPhrase', task.anchor)) + '</div>' : '') +
+        '<div class="task-where">' + escape(task.chapterTitle + ' / ' + task.sceneTitle) +
+          (task.author ? ' - ' + escape(task.author) : '') + '</div>' +
       '</div>' +
     '</li>').join('') + '</ul>';
 
@@ -225,6 +240,14 @@ window.addEventListener('message', (event) => {
   }
   if (!msg) return;
 
+  if (msg.kind === 'strings') {
+    S = (msg.payload && msg.payload.strings) || {};
+    document.querySelectorAll('[data-t]').forEach((el) => {
+      el.textContent = t(el.dataset.t);
+    });
+    post({ kind: 'sprint' });
+    return;
+  }
   if (msg.kind === 'sprint') drawSprint(msg.payload || {});
   else if (msg.kind === 'tasks') drawTasks(msg.payload || {});
 });
@@ -256,7 +279,8 @@ setInterval(() => {
   if (!document.getElementById('sprint').classList.contains('hidden')) post({ kind: 'sprint' });
 }, 1000);
 
-post({ kind: 'sprint' });
+// Labels first: everything else waits on them.
+post({ kind: 'strings' });
 </script>
 </body>
 </html>

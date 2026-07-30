@@ -103,6 +103,22 @@ public sealed class FakeHost : IHostServices, IExtensionProjectService, IExtensi
 
     public void ShowNotification(string message) => Notifications.Add(message);
 
+    /// <summary>What a picker returns. Set by a test that needs one to succeed.</summary>
+    public string? PickResult { get; set; }
+    public List<string> PickTitles { get; } = [];
+
+    public Task<string?> PickFolderAsync(string title)
+    {
+        PickTitles.Add(title);
+        return Task.FromResult(PickResult);
+    }
+
+    public Task<string?> PickFileAsync(string title, bool images = false)
+    {
+        PickTitles.Add(title);
+        return Task.FromResult(PickResult);
+    }
+
     public IExtensionProjectService ProjectService => this;
     public IExtensionStoryService StoryService => this;
 

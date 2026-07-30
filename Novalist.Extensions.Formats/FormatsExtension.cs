@@ -32,11 +32,13 @@ public sealed class FormatsExtension : IExtension, IExportFormatContributor
     public string Author => "Novalist Team";
 
     private IHostServices _host = null!;
+    private IExtensionLocalization _loc = null!;
     private readonly EpubPreflight _preflight = new();
 
     public void Initialize(IHostServices host)
     {
         _host = host;
+        _loc = host.GetLocalization(Id);
         // The preflight is a hook rather than part of the exporter: whoever knows
         // the EPUB specification should own the check, and that is not the code
         // that wrote the file.
@@ -170,13 +172,13 @@ public sealed class FormatsExtension : IExtension, IExportFormatContributor
         var path = ReadPath(argumentsJson);
         if (path == null)
         {
-            _host.ShowNotification("Import needs a path.");
+            _host.ShowNotification(_loc.T("formats.importNeedsPath"));
             return;
         }
 
         using var progress = _host.ShowBusyProgress(new BusyProgressOptions
         {
-            Title = "Importing",
+            Title = _loc.T("formats.importing"),
             InitialStatus = Path.GetFileName(path),
             IsIndeterminate = true
         });
@@ -186,23 +188,21 @@ public sealed class FormatsExtension : IExtension, IExportFormatContributor
         {
             report = await run(_host, path);
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _host.ShowNotification($"Import failed: {ex.Message}");
-            return;
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            _host.ShowNotification($"Import failed: {ex.Message}");
+            _host.ShowNotification(_loc.T("formats.importFailed").Replace("{0}", ex.Message));
             return;
         }
 
         progress.Dispose();
 
-        var summary = new StringBuilder(
-            $"Imported {report.Chapters} chapter(s) and {report.Scenes} scene(s).");
+        var summary = new StringBuilder(_loc.T("formats.imported")
+            .Replace("{0}", report.Chapters.ToString())
+            .Replace("{1}", report.Scenes.ToString()));
         if (report.Skipped.Count > 0)
-            summary.Append($" {report.Skipped.Count} thing(s) were skipped: {report.Skipped[0]}");
+            summary.Append(' ').Append(_loc.T("formats.importSkipped")
+                .Replace("{0}", report.Skipped.Count.ToString())
+                .Replace("{1}", report.Skipped[0]));
         _host.ShowNotification(summary.ToString());
     }
 

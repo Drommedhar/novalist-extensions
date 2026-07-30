@@ -34,16 +34,18 @@ public sealed class PublishExtension : IExtension, IWizardContributor
     public string Author => "Novalist Team";
 
     private IHostServices _host = null!;
+    private IExtensionLocalization _loc = null!;
 
     public void Initialize(IHostServices host)
     {
         _host = host;
+        _loc = host.GetLocalization(Id);
         _host.RegisterCommand(
             new HostCommandInfo
             {
                 Id = CommandId,
-                Title = "Publish a website",
-                Description = "Writes a folder of HTML you can share or host.",
+                Title = _loc.T("publish.command"),
+                Description = _loc.T("publish.commandDesc"),
                 ArgumentsSchema =
                     """
                     {"type":"object","required":["outputPath"],
@@ -66,84 +68,118 @@ public sealed class PublishExtension : IExtension, IWizardContributor
 
     public IReadOnlyList<Sdk.Models.Wizards.WizardDefinition> GetWizards() => [Definition()];
 
-    private static Sdk.Models.Wizards.WizardDefinition Definition() => new()
+    private Sdk.Models.Wizards.WizardDefinition Definition() => new()
     {
         Id = WizardId,
-        DisplayName = "Publish a website",
-        Description =
-            "Writes a folder of HTML from your world, your manuscript or both. "
-            + "Nothing is uploaded anywhere - you get a folder.",
+        // Without this the wizard is a form that goes nowhere: the host collects
+        // the answers and hands them to whoever asked for the run, which for a
+        // wizard picked out of the command palette is not this extension.
+        OnCompleted = GenerateFromAnswersAsync,
+        DisplayName = _loc.T("publish.command"),
+        Description = _loc.T("publish.wizardDesc"),
         Scope = Sdk.Models.Wizards.WizardScope.Project,
         Steps =
         [
             new Sdk.Models.Wizards.ChoiceStep
             {
                 Id = "scope",
-                Title = "What to publish",
-                Help = "A world bible for readers, the manuscript to be read, or both.",
+                Title = _loc.T("publish.scopeTitle"),
+                Help = _loc.T("publish.scopeHelp"),
                 Skippable = false,
                 Choices =
                 [
                     new Sdk.Models.Wizards.WizardChoice
                     {
                         Value = "World",
-                        Label = "The world",
-                        Description = "Codex entries only - a series bible."
+                        Label = _loc.T("publish.scopeWorld"),
+                        Description = _loc.T("publish.scopeWorldDesc")
                     },
                     new Sdk.Models.Wizards.WizardChoice
                     {
                         Value = "Manuscript",
-                        Label = "The manuscript",
-                        Description = "Chapters and scenes, laid out to be read."
+                        Label = _loc.T("publish.scopeManuscript"),
+                        Description = _loc.T("publish.scopeManuscriptDesc")
                     },
                     new Sdk.Models.Wizards.WizardChoice
                     {
                         Value = "Everything",
-                        Label = "Both",
-                        Description = "The manuscript with the world cross-linked into it."
+                        Label = _loc.T("publish.scopeBoth"),
+                        Description = _loc.T("publish.scopeBothDesc")
                     }
                 ]
             },
             new Sdk.Models.Wizards.TextStep
             {
                 Id = "title",
-                Title = "Site title",
-                Help = "Shown at the top of every page.",
-                Placeholder = "The name of the book or the series"
+                Title = _loc.T("publish.titleTitle"),
+                Help = _loc.T("publish.titleHelp"),
+                Placeholder = _loc.T("publish.titlePlaceholder")
             },
             new Sdk.Models.Wizards.TextStep
             {
                 Id = "subtitle",
-                Title = "Subtitle",
-                Help = "Optional. One line under the title on the front page."
+                Title = _loc.T("publish.subtitleTitle"),
+                Help = _loc.T("publish.subtitleHelp")
             },
-            new Sdk.Models.Wizards.TextStep
+            // A choice step whose one option is filled in by opening a native
+            // folder dialog. A path typed by hand into a text box is wrong often
+            // enough that the writer only finds out once the work has run.
+            new Sdk.Models.Wizards.ChoiceStep
             {
                 Id = "outputPath",
-                Title = "Where to write it",
-                Help = "An empty folder. Files with the same names are replaced.",
+                Title = _loc.T("publish.folderTitle"),
+                Help = _loc.T("publish.folderHelp"),
                 Skippable = false,
-                Validator = result => Task.FromResult(
-                    string.IsNullOrWhiteSpace(result.GetText("outputPath"))
-                        ? "Pick a folder to write into."
-                        : null)
+                DynamicChoicesProvider = async _ =>
+                {
+                    var picked = await _host.PickFolderAsync(_loc.T("publish.pickTitle"));
+                    return picked == null
+                        ? []
+                        : [new Sdk.Models.Wizards.WizardChoice
+                        {
+                            Value = picked,
+                            Label = Path.GetFileName(picked.TrimEnd(
+                                Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
+                            Description = picked
+                        }];
+                }
             }
         ]
     };
 
     /// <summary>
-    /// Runs the wizard and generates from its answers. Reached from the command,
-    /// because a wizard that has been filled in and then does nothing is worse
-    /// than no wizard.
+    /// Runs the wizard. The generating is in OnCompleted, so it happens whether
+    /// the wizard was started here or picked out of the command palette.
     /// </summary>
-    private async Task RunWizardAsync()
+    private async Task RunWizardAsync() => await _host.RunWizardAsync(Definition());
+
+    /// <summary>
+    /// Turns the answers into a generate request.
+    ///
+    /// The folder step is a choice rather than free text, so the answer is the
+    /// picked path - read as text either way, because a single-choice answer and
+    /// a typed one arrive the same.
+    /// </summary>
+    private async Task GenerateFromAnswersAsync(Sdk.Models.Wizards.WizardResult result)
     {
-        var result = await _host.RunWizardAsync(Definition());
-        if (result is not { Completed: true }) return;
+        var outputPath = result.GetText("outputPath");
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            var multi = result.GetMulti("outputPath");
+            if (multi.Count > 0) outputPath = multi[0];
+        }
+
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            // The writer got as far as the last step and cancelled the folder
+            // dialog. Saying so beats writing nothing and looking successful.
+            _host.ShowNotification(_loc.T("publish.noFolderChosen"));
+            return;
+        }
 
         await RunAsync(JsonSerializer.Serialize(new
         {
-            outputPath = result.GetText("outputPath"),
+            outputPath,
             scope = result.GetText("scope"),
             title = result.GetText("title"),
             subtitle = result.GetText("subtitle")
@@ -179,25 +215,25 @@ public sealed class PublishExtension : IExtension, IWizardContributor
         }
         catch (JsonException)
         {
-            _host.ShowNotification("That publish request was not readable.");
+            _host.ShowNotification(_loc.T("publish.unreadable"));
             return;
         }
 
         if (string.IsNullOrWhiteSpace(outputPath))
         {
-            _host.ShowNotification("Publishing needs a folder to write into.");
+            _host.ShowNotification(_loc.T("publish.needsFolder"));
             return;
         }
         if (!_host.ProjectService.IsProjectLoaded)
         {
-            _host.ShowNotification("Open a project first.");
+            _host.ShowNotification(_loc.T("publish.noProject"));
             return;
         }
 
         using var progress = _host.ShowBusyProgress(new BusyProgressOptions
         {
-            Title = "Publishing",
-            InitialStatus = "Reading the project",
+            Title = _loc.T("publish.publishing"),
+            InitialStatus = _loc.T("publish.readingProject"),
             IsIndeterminate = true,
             AllowCancel = true
         });
@@ -205,7 +241,7 @@ public sealed class PublishExtension : IExtension, IWizardContributor
         try
         {
             var content = await ReadAsync(options.Scope, progress.CancellationToken);
-            progress.SetStatus("Writing pages");
+            progress.SetStatus(_loc.T("publish.writingPages"));
 
             var files = SiteGenerator.Generate(content, options);
             Directory.CreateDirectory(outputPath);
@@ -220,17 +256,22 @@ public sealed class PublishExtension : IExtension, IWizardContributor
             }
 
             progress.Dispose();
-            _host.ShowNotification($"Wrote {files.Count} page(s) to {outputPath}.");
+            // The path, not just a count: a writer who has just generated a site
+            // needs to be able to find it.
+            _host.ShowNotification(_loc.T("publish.wrote")
+                .Replace("{0}", files.Count.ToString())
+                .Replace("{1}", outputPath));
         }
         catch (OperationCanceledException)
         {
             // A cancelled publish leaves the pages it already wrote. Deleting a
             // folder the writer chose is not something to do on their behalf.
-            _host.ShowNotification("Publishing was cancelled.");
+            _host.ShowNotification(_loc.T("publish.cancelled"));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _host.ShowNotification($"Could not write the site: {ex.Message}");
+            _host.ShowNotification(
+                _loc.T("publish.writeFailed").Replace("{0}", ex.Message));
         }
     }
 
