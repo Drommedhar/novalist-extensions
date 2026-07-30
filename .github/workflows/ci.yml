@@ -16,24 +16,39 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          path: novalist-extension
+
+      # These track the SDK's main branch rather than a published package.
+      # Everything here uses SDK surface added for it, and a package only exists
+      # once the host that introduced it ships - so building against the source
+      # is the only thing that can work, and pretending otherwise produces a
+      # permanently red build.
+      - name: Check out the SDK
+        uses: actions/checkout@v4
+        with:
+          repository: Drommedhar/novalist-official
+          path: novalist-official
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      # Against the published SDK package rather than the sibling checkout, so
-      # CI builds what a third party building these would build.
       - name: Restore
-        run: dotnet restore -p:UseLocalSdk=false
+        working-directory: novalist-extension
+        run: dotnet restore
 
       - name: Build
-        run: dotnet build -c Release --no-restore -p:UseLocalSdk=false
+        working-directory: novalist-extension
+        run: dotnet build -c Release --no-restore
 
       - name: Test
-        run: dotnet test -c Release --no-build -p:UseLocalSdk=false
+        working-directory: novalist-extension
+        run: dotnet test -c Release --no-build
 
       - name: Check every manifest is readable and consistent
+        working-directory: novalist-extension
         run: |
           fail=0
           for manifest in */extension.json; do
@@ -51,5 +66,31 @@ jobs:
               com.novalist.*) ;;
               *) echo "::error file=$manifest::id '$id' is not namespaced"; fail=1 ;;
             esac
+          done
+          exit $fail
+
+      - name: Check every locale key the code asks for exists
+        working-directory: novalist-extension
+        shell: bash
+        run: |
+          # A missing key returns an empty string at runtime rather than
+          # throwing, so a blank label is invisible until somebody opens the
+          # panel. Cheaper to catch here.
+          fail=0
+          for dir in Novalist.Extensions.*/; do
+            project="${dir%/}"
+            group="$(echo "${project#Novalist.Extensions.}" | tr '[:upper:]' '[:lower:]')"
+            [ -f "$project/Locales/en.json" ] || continue
+
+            used=$(grep -rhoE "loc\.T\(\"$group\.[A-Za-z.]+\"\)" "$project" --include='*.cs' \
+                   | sed -E "s/.*\"$group\.([A-Za-z.]+)\".*/\1/" | sort -u)
+            for lang in en de; do
+              have=$(jq -r ".$group | keys[]" "$project/Locales/$lang.json" | sort -u)
+              missing=$(comm -23 <(echo "$used") <(echo "$have"))
+              if [ -n "$missing" ]; then
+                echo "::error::$project $lang is missing: $(echo $missing)"
+                fail=1
+              fi
+            done
           done
           exit $fail

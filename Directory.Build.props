@@ -9,15 +9,34 @@
   </PropertyGroup>
 
   <!--
-    Local development builds against the SDK source next door, so a change to
-    the SDK is testable here without a package round trip. CI passes
-    UseLocalSdk=false and takes the published package instead, which is what a
-    third party building these would get.
+    The SDK version these need.
+
+    Every extension here uses surface that was added for them: research items,
+    review remarks and suggested edits, scene metadata, structural editing, the
+    command bus, export checks and the file picker. None of it is in a published
+    package yet - NuGet has 11.1.0, which predates all of it - so a build
+    against the package fails with a wall of missing-type errors that says
+    nothing about the real cause.
+  -->
+  <PropertyGroup>
+    <NovalistSdkVersion>11.2.0</NovalistSdkVersion>
+  </PropertyGroup>
+
+  <!--
+    The default is the SDK source next door, because that is the only place the
+    version above exists until the host that introduced it ships. It also means
+    a change to the SDK is testable here without a package round trip.
   -->
   <ItemGroup Condition="'$(UseLocalSdk)' != 'false'">
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\novalist-official\Novalist.Sdk\Novalist.Sdk.csproj" />
   </ItemGroup>
+
+  <!--
+    Pinned rather than a wildcard. A wildcard quietly resolved to 11.1.0 - a real
+    package, from before any of this existed - and turned "that version is not
+    published yet" into thirty type errors in four projects.
+  -->
   <ItemGroup Condition="'$(UseLocalSdk)' == 'false'">
-    <PackageReference Include="Novalist.Sdk" Version="*" />
+    <PackageReference Include="Novalist.Sdk" Version="[$(NovalistSdkVersion),)" />
   </ItemGroup>
 </Project>

@@ -45,6 +45,27 @@ separate, manual step.
 One repository, several extensions, separate versions on purpose: a fix to the
 EPUB check has no business bumping the version of the writing timer.
 
+## The SDK these need
+
+Everything here uses SDK surface that was added for it: research items, review
+remarks and suggested edits, scene metadata, structural editing, the command
+bus, export checks and the file picker.
+
+**That surface is not on NuGet yet.** The published `Novalist.Sdk` is 11.1.0,
+which predates all of it; these need 11.2.0, which reaches NuGet only when the
+host that introduced it is released. So every build here - local, CI and
+release - goes against the SDK **source**, and both workflows check out
+`novalist-official` alongside to get it.
+
+Building against the package fails with `NU1102: Unable to find package
+Novalist.Sdk with version (>= 11.2.0)`. That message is deliberate: the version
+is pinned rather than a wildcard, because a wildcard quietly resolved to 11.1.0
+and turned "not published yet" into thirty missing-type errors across four
+projects.
+
+Once the SDK ships, `-p:UseLocalSdk=false` starts working and nothing else has
+to change.
+
 ## Building locally
 
 Local builds reference the SDK **source** next door, so a change to the SDK is
@@ -65,11 +86,8 @@ A build also copies each extension into your local Novalist extensions folder
 (`%APPDATA%/Novalist/Extensions/<Name>` on Windows), so a rebuild is all it takes
 to see the change in the running app.
 
-To build the way CI does, against the published package instead:
-
-```
-dotnet build -p:UseLocalSdk=false
-```
+`-p:UseLocalSdk=false` switches to the published package. It will not work
+until the SDK ships - see above.
 
 ## Adding an extension to this repository
 

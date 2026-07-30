@@ -25,6 +25,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          path: novalist-extension
+
+      # Built against the SDK source, not a published package. Everything here
+      # uses SDK surface added for it, and that surface reaches NuGet only when
+      # the host that introduced it ships - so a release built against the
+      # package would fail, and one built against a stale package would be worse.
+      - name: Check out the SDK
+        uses: actions/checkout@v4
+        with:
+          repository: Drommedhar/novalist-official
+          path: novalist-official
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -33,6 +45,7 @@ jobs:
 
       - name: Work out which extension this tag is for
         id: which
+        working-directory: novalist-extension
         run: |
           TAG="${GITHUB_REF_NAME}"
           SLUG="${TAG%%-v*}"
@@ -60,6 +73,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Stamp the version into the manifest
+        working-directory: novalist-extension
         run: |
           cd "${{ steps.which.outputs.project }}"
           jq --arg v "${{ steps.which.outputs.version }}" '.version = $v' \
@@ -70,26 +84,24 @@ jobs:
           jq -r '"Publishing \(.id) \(.version)"' extension.json
 
       - name: Restore
-        run: >-
-          dotnet restore "${{ steps.which.outputs.project }}"
-          -p:UseLocalSdk=false
+        working-directory: novalist-extension
+        run: dotnet restore "${{ steps.which.outputs.project }}"
 
       - name: Build
+        working-directory: novalist-extension
         run: >-
           dotnet build "${{ steps.which.outputs.project }}"
           -c ${{ env.CONFIGURATION }}
           --no-restore
-          -p:UseLocalSdk=false
 
       - name: Test
+        working-directory: novalist-extension
         # The whole test project runs, not just this extension's tests: a change
         # to shared code that breaks a sibling should stop the release.
-        run: >-
-          dotnet test tests/Novalist.Extensions.Tests
-          -c ${{ env.CONFIGURATION }}
-          -p:UseLocalSdk=false
+        run: dotnet test tests/Novalist.Extensions.Tests -c ${{ env.CONFIGURATION }}
 
       - name: Package
+        working-directory: novalist-extension
         run: |
           cd "${{ steps.which.outputs.project }}/bin/${{ env.CONFIGURATION }}/net8.0"
           ZIP="${GITHUB_WORKSPACE}/${{ steps.which.outputs.id }}.zip"
