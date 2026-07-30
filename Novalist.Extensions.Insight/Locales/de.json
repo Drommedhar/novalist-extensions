@@ -35,6 +35,15 @@
     "pacingNothing": "Nichts Hervorzuhebendes.",
     "pacingSuggests": "Was das nahelegt",
     "pacingUnrated": "keine Intensität gesetzt",
+    "presence": "Wer im Buch vorkommt",
+    "presenceAppearances": "Kapitel mit Auftritt",
+    "presenceDropped": "Fallen gelassen",
+    "presenceGap": "Längste Lücke",
+    "presenceHint": "Alle Figuren und wo sie verschwinden. Lücken werden nur zwischen dem ersten und dem letzten Auftritt gezählt – wer in Kapitel zwanzig auftritt, fehlt nicht in den ersten neunzehn.",
+    "presenceName": "Figur",
+    "presenceNever": "Kommt nie vor",
+    "presenceNone": "Noch keine Figuren im Codex.",
+    "presenceRange": "Von / bis",
     "reading": "Manuskript wird gelesen...",
     "unreadable": "Diese Anfrage war nicht lesbar."
   }

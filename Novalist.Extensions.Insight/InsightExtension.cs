@@ -107,6 +107,7 @@ internal sealed class ReportController(IHostServices host, string extensionId) :
             "drift" => Reply(kind, new { findings = await DriftAsync() }),
             "concordance" => Reply(kind, await ConcordanceAsync(root)),
             "pacing" => Reply(kind, await PacingAsync()),
+            "presence" => Reply(kind, await PresenceAsync()),
             "continuity" => Reply("continuity", await ContinuityAsync()),
             "continuityReviewed" => Reply("continuity", await MarkReviewedAsync(root)),
             "continuityRebase" => Reply("continuity", await RebaseAsync()),
@@ -134,6 +135,16 @@ internal sealed class ReportController(IHostServices host, string extensionId) :
         ["tabContinuity"] = _loc.T("insight.continuity"),
         ["tabConcordance"] = _loc.T("insight.concordance"),
         ["tabPacing"] = _loc.T("insight.pacing"),
+        ["tabPresence"] = _loc.T("insight.presence"),
+
+        ["presenceHint"] = _loc.T("insight.presenceHint"),
+        ["presenceNone"] = _loc.T("insight.presenceNone"),
+        ["presenceName"] = _loc.T("insight.presenceName"),
+        ["presenceAppearances"] = _loc.T("insight.presenceAppearances"),
+        ["presenceRange"] = _loc.T("insight.presenceRange"),
+        ["presenceGap"] = _loc.T("insight.presenceGap"),
+        ["presenceNever"] = _loc.T("insight.presenceNever"),
+        ["presenceDropped"] = _loc.T("insight.presenceDropped"),
 
         ["reading"] = _loc.T("insight.reading"),
         ["noProject"] = _loc.T("insight.noProject"),
@@ -276,6 +287,57 @@ internal sealed class ReportController(IHostServices host, string extensionId) :
 
         var curve = PacingCurve.Build(points);
         return new { points = curve, observations = PacingCurve.Observe(curve) };
+    }
+
+    /// <summary>
+    /// Who drops out of the book, and where.
+    ///
+    /// The Inspector says "last seen N chapters ago" for whichever scene happens
+    /// to be open, at a fixed threshold. That answers "is this character overdue
+    /// right now" and cannot answer what a revision asks: who vanished from act
+    /// two, and for how long.
+    /// </summary>
+    private async Task<object> PresenceAsync()
+    {
+        var chapters = host.ProjectService.GetChaptersOrdered();
+        var characters = await host.EntityService.LoadCharactersAsync();
+
+        // Chapter numbers each character is in, from one. A cast the writer
+        // assigned counts; so does a confirmed mention in the prose.
+        var appearances = characters.ToDictionary(
+            c => c.DisplayName,
+            _ => (IReadOnlyList<int>)new List<int>(),
+            StringComparer.OrdinalIgnoreCase);
+        var byId = characters.ToDictionary(c => c.Id, c => c.DisplayName, StringComparer.Ordinal);
+
+        for (var index = 0; index < chapters.Count; index++)
+        {
+            var chapter = chapters[index];
+            foreach (var scene in host.ProjectService.GetScenesForChapter(chapter.Guid))
+            {
+                var detail = host.StoryService.GetSceneDetail(chapter.Guid, scene.Id);
+                var present = new List<string>();
+
+                if (detail != null)
+                {
+                    foreach (var id in detail.Cast ?? [])
+                        if (byId.TryGetValue(id, out var name)) present.Add(name);
+                    if (!string.IsNullOrWhiteSpace(detail.Pov)) present.Add(detail.Pov);
+                }
+
+                foreach (var name in present)
+                {
+                    if (!appearances.TryGetValue(name, out var list)) continue;
+                    ((List<int>)list).Add(index + 1);
+                }
+            }
+        }
+
+        return new
+        {
+            chapterCount = chapters.Count,
+            rows = CastPresence.Build(chapters.Count, appearances)
+        };
     }
 
     // ── Continuity, which is the one with memory ──

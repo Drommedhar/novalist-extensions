@@ -35,6 +35,15 @@
     "pacingNothing": "Nothing worth pointing at.",
     "pacingSuggests": "What that suggests",
     "pacingUnrated": "no intensity set",
+    "presence": "Who is in the book",
+    "presenceAppearances": "Chapters in",
+    "presenceDropped": "Dropped",
+    "presenceGap": "Longest gap",
+    "presenceHint": "Every character, and where they drop out. Gaps are counted only between a character’s first appearance and their last — arriving in chapter twenty is not an absence from the first nineteen.",
+    "presenceName": "Character",
+    "presenceNever": "Never appears",
+    "presenceNone": "No characters in the Codex yet.",
+    "presenceRange": "From / to",
     "reading": "Reading the manuscript...",
     "unreadable": "That request was not readable."
   }

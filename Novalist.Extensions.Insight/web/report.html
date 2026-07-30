@@ -78,6 +78,7 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
   <button class="tab" data-kind="continuity" data-t="tabContinuity"></button>
   <button class="tab" data-kind="concordance" data-t="tabConcordance"></button>
   <button class="tab" data-kind="pacing" data-t="tabPacing"></button>
+  <button class="tab" data-kind="presence" data-t="tabPresence"></button>
 </div>
 <div id="toolbar"></div>
 <div id="body"></div>
@@ -217,6 +218,39 @@ const draw = {
       escape(p.points[p.points.length - 1].chapterTitle) + '</span></div>' +
       '<h3>' + escape(t('pacingSuggests')) + '</h3>' +
       findingList(p.observations, t('pacingNothing'));
+  },
+
+  /**
+   * Who drops out of the book, and where.
+   *
+   * The Inspector says "last seen N chapters ago" for whichever scene is open,
+   * at a fixed threshold. That answers "is this one overdue right now" and not
+   * the question a revision asks: who vanished from act two, and for how long.
+   */
+  presence(p) {
+    if (p.error) return failed(p.error);
+    if (!p.rows || !p.rows.length) return failed(t('presenceNone'));
+
+    const rows = p.rows.map((r) => {
+      const range = r.appearances === 0
+        ? '<em>' + escape(t('presenceNever')) + '</em>'
+        : r.firstChapter + ' - ' + r.lastChapter;
+      const gap = r.longestGap > 0 ? r.longestGap + ' (' + r.gapStartsAt + ')' : '-';
+      const flag = r.disappearsEarly
+        ? ' <span class="category">' + escape(t('presenceDropped')) + '</span>'
+        : '';
+      return '<tr><td>' + escape(r.name) + flag + '</td><td>' + r.appearances +
+        '</td><td>' + range + '</td><td>' + gap + '</td></tr>';
+    }).join('');
+
+    bodyEl.innerHTML =
+      '<p class="hint">' + escape(t('presenceHint')) + '</p>' +
+      '<table><thead><tr>' +
+      '<th>' + escape(t('presenceName')) + '</th>' +
+      '<th>' + escape(t('presenceAppearances')) + '</th>' +
+      '<th>' + escape(t('presenceRange')) + '</th>' +
+      '<th>' + escape(t('presenceGap')) + '</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table>';
   }
 };
 

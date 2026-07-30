@@ -609,4 +609,88 @@ public class InsightTests
         Assert.Empty(ContinuityWorklist.Deserialise(null).EntityHashes);
         Assert.Empty(ContinuityWorklist.Deserialise("   ").EntityHashes);
     }
+
+    // ── Who drops out of the book ──
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<int>> Cast(
+        params (string Name, int[] Chapters)[] rows)
+        => rows.ToDictionary(
+            r => r.Name,
+            r => (IReadOnlyList<int>)r.Chapters.ToList(),
+            StringComparer.OrdinalIgnoreCase);
+
+    [Fact]
+    public void AGapIsCountedOnlyBetweenTheFirstAppearanceAndTheLast()
+    {
+        // Arriving in chapter eight is not an absence from one to seven; they
+        // are not in the book yet, and counting it would bury the real gaps
+        // under one row per late arrival.
+        var rows = CastPresence.Build(10, Cast(("Late", [8, 9, 10])));
+
+        var row = Assert.Single(rows);
+        Assert.Equal(0, row.LongestGap);
+        Assert.Equal(8, row.FirstChapter);
+        Assert.Equal(10, row.LastChapter);
+    }
+
+    [Fact]
+    public void TheLongestGapAndWhereItStartsAreReported()
+    {
+        var rows = CastPresence.Build(12, Cast(("Mira", [1, 2, 9, 12])));
+
+        var row = Assert.Single(rows);
+        // Six chapters between two and nine, starting at three.
+        Assert.Equal(6, row.LongestGap);
+        Assert.Equal(3, row.GapStartsAt);
+        Assert.Equal(4, row.Appearances);
+    }
+
+    [Fact]
+    public void ACharacterWhoLeavesEarlyIsCalledDropped()
+    {
+        // Last seen in chapter three of twelve: nine chapters without them, and
+        // a reader has long since forgotten.
+        var dropped = Assert.Single(CastPresence.Build(12, Cast(("Tobin", [1, 3]))));
+        Assert.True(dropped.DisappearsEarly);
+
+        // Last seen in chapter ten of twelve is not dropped - that is an ending.
+        var ends = Assert.Single(CastPresence.Build(12, Cast(("Ada", [1, 10]))));
+        Assert.False(ends.DisappearsEarly);
+    }
+
+    [Fact]
+    public void AnEntryThatNeverReachesThePageIsReported()
+    {
+        // In the Codex, in no chapter: the one thing a cast list cannot show.
+        var row = Assert.Single(CastPresence.Build(5, Cast(("Ghost", []))));
+
+        Assert.Equal(0, row.Appearances);
+        Assert.Equal(0, row.FirstChapter);
+        Assert.False(row.DisappearsEarly);
+    }
+
+    [Fact]
+    public void RepeatsAndOutOfRangeChaptersDoNotDistortTheCount()
+    {
+        // Three scenes of one chapter is one chapter, and a stale chapter
+        // number from a deleted chapter is not an appearance.
+        var row = Assert.Single(CastPresence.Build(3, Cast(("Mira", [2, 2, 2, 99, 0]))));
+
+        Assert.Equal(1, row.Appearances);
+        Assert.Equal(2, row.FirstChapter);
+    }
+
+    [Fact]
+    public void TheWorstRowsComeFirst()
+    {
+        var rows = CastPresence.Build(12, Cast(
+            ("Steady", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
+            ("Gappy", [1, 7, 12]),
+            ("Ghost", []),
+            ("Dropped", [1, 2])));
+
+        // A report you have to sort yourself has not answered anything.
+        Assert.Equal(["Ghost", "Dropped", "Gappy", "Steady"], rows.Select(r => r.Name));
+    }
+
 }
