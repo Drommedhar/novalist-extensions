@@ -35,24 +35,29 @@ internal sealed class BoardController(
         }
         catch (JsonException)
         {
-            return Reply(new { error = "That message was not readable." });
+            return Reply("error", new { error = "That message was not readable." });
         }
 
+        // Every sprint request answers as "sprint" and every task request as
+        // "tasks": the host relays a reply with nothing tying it to the request,
+        // so the kind is how the page knows which panel it is for.
         return kind switch
         {
-            "sprint" => Reply(SprintState()),
-            "sprintStart" => Reply(StartSprint()),
-            "sprintStop" => Reply(StopSprint()),
-            "sprintSettings" => Reply(SetSprintSettings(root)),
-            "tasks" => Reply(new { tasks = await TasksAsync() }),
-            "taskDone" => Reply(new { tasks = await ResolveTaskAsync(root, true) }),
-            "taskReopen" => Reply(new { tasks = await ResolveTaskAsync(root, false) }),
-            "openScene" => Reply(OpenScene(root)),
-            _ => Reply(new { error = $"Unknown request \"{kind}\"." })
+            "sprint" => Reply("sprint", SprintState()),
+            "sprintStart" => Reply("sprint", StartSprint()),
+            "sprintStop" => Reply("sprint", StopSprint()),
+            "sprintSettings" => Reply("sprint", SetSprintSettings(root)),
+            "tasks" => Reply("tasks", new { tasks = await TasksAsync() }),
+            "taskDone" => Reply("tasks", new { tasks = await ResolveTaskAsync(root, true) }),
+            "taskReopen" => Reply("tasks", new { tasks = await ResolveTaskAsync(root, false) }),
+            _ => Reply(kind, new { error = $"Unknown request \"{kind}\"." })
         };
     }
 
-    private static string Reply(object payload) => JsonSerializer.Serialize(payload, Json);
+    private static string Reply(string kind, object payload)
+        => JsonSerializer.Serialize(new ReplyEnvelope(kind, payload), Json);
+
+    private sealed record ReplyEnvelope(string Kind, object Payload);
 
     // ── Sprints ──
 
@@ -146,17 +151,6 @@ internal sealed class BoardController(
             await host.ReviewService.SetCommentResolvedAsync(chapterGuid, sceneId, commentId, done);
 
         return await TasksAsync();
-    }
-
-    private object OpenScene(JsonElement request)
-    {
-        // Nothing to do here beyond acknowledging: the panel asks the host to
-        // open the scene through its own command, and this only exists so the
-        // board can report a bad request rather than failing silently.
-        var sceneId = Text(request, "sceneId");
-        return sceneId == null
-            ? new { error = "No scene given." }
-            : new { ok = true };
     }
 
     private static string? Text(JsonElement element, string name)

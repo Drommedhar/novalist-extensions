@@ -85,26 +85,37 @@ internal sealed class ReportController(IHostServices host, string extensionId) :
         }
         catch (JsonException)
         {
-            return Reply(new { error = "That message was not readable." });
+            return Reply("error", new { error = "That message was not readable." });
         }
 
         if (!host.ProjectService.IsProjectLoaded)
-            return Reply(new { error = "Open a project first." });
+            return Reply(kind, new { error = "Open a project first." });
 
         return kind switch
         {
-            "health" => Reply(new { findings = await HealthAsync() }),
-            "drift" => Reply(new { findings = await DriftAsync() }),
-            "concordance" => Reply(await ConcordanceAsync(root)),
-            "pacing" => Reply(await PacingAsync()),
-            "continuity" => Reply(await ContinuityAsync()),
-            "continuityReviewed" => Reply(await MarkReviewedAsync(root)),
-            "continuityRebase" => Reply(await RebaseAsync()),
-            _ => Reply(new { error = $"Unknown request \"{kind}\"." })
+            "health" => Reply(kind, new { findings = await HealthAsync() }),
+            "drift" => Reply(kind, new { findings = await DriftAsync() }),
+            "concordance" => Reply(kind, await ConcordanceAsync(root)),
+            "pacing" => Reply(kind, await PacingAsync()),
+            "continuity" => Reply("continuity", await ContinuityAsync()),
+            "continuityReviewed" => Reply("continuity", await MarkReviewedAsync(root)),
+            "continuityRebase" => Reply("continuity", await RebaseAsync()),
+            _ => Reply(kind, new { error = $"Unknown request \"{kind}\"." })
         };
     }
 
-    private static string Reply(object payload) => JsonSerializer.Serialize(payload, Json);
+    /// <summary>
+    /// Wraps a payload with the kind it answers.
+    ///
+    /// The host posts a reply back into the frame with nothing tying it to the
+    /// request, so the kind is how the page knows which panel to draw. The two
+    /// continuity mutations answer as "continuity" because that is the panel
+    /// waiting for them.
+    /// </summary>
+    private static string Reply(string kind, object payload)
+        => JsonSerializer.Serialize(new ReplyEnvelope(kind, payload), Json);
+
+    private sealed record ReplyEnvelope(string Kind, object Payload);
 
     // ── The reports ──
 
