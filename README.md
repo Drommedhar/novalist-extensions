@@ -50,7 +50,8 @@ EPUB check has no business bumping the version of the writing timer.
 Everything here uses SDK surface that was added for it: research items, review
 remarks and suggested edits, scene metadata, structural editing, the command
 bus, export checks, the file picker, and an export context that carries the
-book's language, author and cover rather than just a path and a title.
+book's language, author, cover and chapter selection rather than just a path
+and a title.
 
 **That surface is not on NuGet yet.** The published `Novalist.Sdk` is 11.1.0,
 which predates all of it; these need 11.2.0, which reaches NuGet only when the

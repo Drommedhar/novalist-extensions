@@ -120,12 +120,19 @@ public sealed class FormatsExtension : IExtension, IExportFormatContributor
     private Task<Manuscript> ReadBookAsync(ExportContext context)
     {
         var title = string.IsNullOrWhiteSpace(context.BookName) ? "Untitled" : context.BookName;
-        return Manuscript.ReadAsync(_host, title, new MsBook(
+        return Manuscript.ReadAsync(
+            _host,
             title,
-            context.Author,
-            string.IsNullOrWhiteSpace(context.Language) ? "en" : context.Language,
-            context.CoverImagePath,
-            context.IncludeTitlePage));
+            new MsBook(
+                title,
+                context.Author,
+                string.IsNullOrWhiteSpace(context.Language) ? "en" : context.Language,
+                context.CoverImagePath,
+                context.IncludeTitlePage),
+            // The writer's chapter selection. Contributed formats used to be
+            // given none, so every run produced the whole book and there was no
+            // way to send somebody three chapters in anything but a built-in.
+            context.SelectedChapterGuids);
     }
 
     // ── Importers, exposed as commands ──

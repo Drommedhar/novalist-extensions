@@ -57,11 +57,19 @@ public sealed record Manuscript(
     /// everything after it in the output.
     /// </summary>
     public static async Task<Manuscript> ReadAsync(
-        IHostServices host, string title, MsBook? book = null)
+        IHostServices host, string title, MsBook? book = null,
+        IReadOnlyList<string>? onlyChapterGuids = null)
     {
+        // An empty selection means the whole book, which is what an export that
+        // names none has always done.
+        var wanted = onlyChapterGuids is { Count: > 0 }
+            ? new HashSet<string>(onlyChapterGuids, StringComparer.Ordinal)
+            : null;
+
         var chapters = new List<MsChapter>();
         foreach (var chapter in host.ProjectService.GetChaptersOrdered())
         {
+            if (wanted != null && !wanted.Contains(chapter.Guid)) continue;
             var scenes = new List<MsScene>();
             foreach (var scene in host.ProjectService.GetScenesForChapter(chapter.Guid))
             {
