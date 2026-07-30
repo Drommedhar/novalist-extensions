@@ -1,5 +1,6 @@
 {
   "formats": {
+    "csv": "Szenenliste (CSV)",
     "fb2": "FictionBook 2",
     "fountain": "Drehbuch (Fountain)",
     "html": "Webseite (HTML)",
@@ -14,7 +15,9 @@
     "importSkipped": "{0} Element(e) übersprungen: {1}",
     "imported": "{0} Kapitel und {1} Szene(n) importiert.",
     "importing": "Import läuft",
+    "json": "Struktur (JSON)",
     "odt": "OpenDocument-Text",
+    "opml": "Gliederung (OPML)",
     "rtf": "Rich Text Format",
     "txt": "Reiner Text"
   }

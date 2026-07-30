@@ -74,6 +74,19 @@ public sealed class FormatsExtension : IExtension, IExportFormatContributor
         Text("fb2", "formats.fb2", ".fb2",
             "M4 4h12l4 4v12H4z M9 12h6 M9 16h4",
             TextWriters.Fb2, supportsCover: true),
+        // The manuscript as data rather than as a document. Nothing
+        // machine-readable ever left a project, so an outline could not be
+        // pulled into a spreadsheet or handed to a script.
+        Text("csv", "formats.csv", ".csv",
+            "M4 4h16v16H4z M4 9h16 M4 14h16 M9 4v16",
+            Interchange.Csv),
+        Text("json", "formats.json", ".json",
+            "M8 4c-2 0-3 1-3 3v2c0 1-1 2-2 2 1 0 2 1 2 2v2c0 2 1 3 3 3"
+            + " M16 4c2 0 3 1 3 3v2c0 1 1 2 2 2-1 0-2 1-2 2v2c0 2-1 3-3 3",
+            Interchange.Json),
+        Text("opml", "formats.opml", ".opml",
+            "M4 5h6 M8 5v14 M8 10h12 M8 15h12 M8 19h12",
+            Interchange.Opml),
         new ExportFormatDescriptor
         {
             FormatKey = "odt",

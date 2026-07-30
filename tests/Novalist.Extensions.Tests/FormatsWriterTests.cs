@@ -451,4 +451,101 @@ public class FormatsWriterTests
         Assert.Equal(("pt", "BR"), OdtWriter.LanguageParts("pt-BR"));
     }
 
+
+    // ── The manuscript as data rather than as a document ──
+
+    private static Manuscript TwoChapters() => new(
+        "The Salt Road",
+        [
+            new MsChapter("Chapter, One", "Act One",
+                [new MsScene("Low water", "<p>One two three.</p>", "One two three.")]),
+            new MsChapter("Chapter \"Two\"", "Act Two",
+                [
+                    new MsScene("The crossing", "<p>Four five.</p>", "Four five."),
+                    new MsScene("After", "<p>Six.</p>", "Six.")
+                ])
+        ]);
+
+    [Fact]
+    public void CsvQuotesTheFieldsThatWouldBreakARow()
+    {
+        var csv = Interchange.Csv(TwoChapters());
+        var lines = csv.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+
+        Assert.Equal(
+            "chapterNumber,chapterTitle,act,sceneNumber,sceneTitle,words", lines[0]);
+        // A comma in a title breaks every row after it unless it is quoted,
+        // and titles acquire commas eventually.
+        Assert.Equal("1,\"Chapter, One\",Act One,1,Low water,3", lines[1]);
+        // A quote inside a field is doubled, per RFC 4180.
+        Assert.Contains("\"Chapter \"\"Two\"\"\"", lines[2]);
+        Assert.Equal(4, lines.Length);
+    }
+
+    [Fact]
+    public void CsvNumbersChaptersAndScenesFromOne()
+    {
+        var rows = Interchange.Rows(TwoChapters());
+
+        Assert.Equal([1, 2, 2], rows.Select(r => r.ChapterNumber));
+        // Scene numbers restart inside each chapter, which is how anybody
+        // reading a spreadsheet of them expects to find scene two of three.
+        Assert.Equal([1, 1, 2], rows.Select(r => r.SceneNumber));
+    }
+
+    [Fact]
+    public void CsvFieldQuotingIsOnlyAppliedWhereItIsNeeded()
+    {
+        Assert.Equal(string.Empty, Interchange.Field(null));
+        Assert.Equal("plain", Interchange.Field("plain"));
+        Assert.Equal("\"with, comma\"", Interchange.Field("with, comma"));
+        Assert.Equal("\"line\nbreak\"", Interchange.Field("line\nbreak"));
+    }
+
+    [Fact]
+    public void JsonKeepsTheShapeTheBookHas()
+    {
+        var json = Interchange.Json(TwoChapters() with
+        {
+            Book = new MsBook("The Salt Road", "Ada Cole", "de", string.Empty, true)
+        });
+
+        using var document = System.Text.Json.JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        Assert.Equal("Ada Cole", root.GetProperty("author").GetString());
+        Assert.Equal("de", root.GetProperty("language").GetString());
+        Assert.Equal(6, root.GetProperty("wordCount").GetInt32());
+
+        var chapters = root.GetProperty("chapters");
+        Assert.Equal(2, chapters.GetArrayLength());
+        Assert.Equal(2, chapters[1].GetProperty("scenes").GetArrayLength());
+        // Titles are prose; escaping them to \u sequences makes the file
+        // unreadable to the person most likely to open it.
+        Assert.Contains("Chapter, One", json);
+    }
+
+    [Fact]
+    public void OpmlNestsScenesInsideTheirChapter()
+    {
+        var opml = Interchange.Opml(TwoChapters());
+
+        Assert.Contains("<opml version=\"2.0\">", opml);
+        Assert.Contains("<outline text=\"Chapter, One\">", opml);
+        Assert.Contains("<outline text=\"Low water\"/>", opml);
+        // A quote in a title would end the attribute early.
+        Assert.Contains("Chapter &quot;Two&quot;", opml);
+    }
+
+    [Fact]
+    public void AnEmptyBookProducesValidFilesRatherThanNothing()
+    {
+        var empty = new Manuscript("Untitled", []);
+
+        Assert.StartsWith("chapterNumber,", Interchange.Csv(empty));
+        Assert.Contains("</opml>", Interchange.Opml(empty));
+        using var document = System.Text.Json.JsonDocument.Parse(Interchange.Json(empty));
+        Assert.Equal(0, document.RootElement.GetProperty("chapters").GetArrayLength());
+    }
+
 }
