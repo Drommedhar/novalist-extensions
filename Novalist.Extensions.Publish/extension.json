@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "Novalist Team",
   "entryAssembly": "Novalist.Extensions.Publish.dll",
-  "minHostVersion": "2.3.0",
+  "minHostVersion": "2.5.0",
   "maxHostVersion": "",
   "dependencies": [],
   "tags": [
