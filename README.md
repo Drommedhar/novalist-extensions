@@ -1,7 +1,7 @@
 # Novalist extensions
 
-Extensions for [Novalist](https://github.com/Drommedhar/novalist-official), built
-against the published `Novalist.Sdk` package.
+Extensions for [Novalist](https://github.com/Drommedhar/novalist-official),
+built against the `Novalist.Sdk` source - see [the SDK these need](#the-sdk-these-need).
 
 Everything here is work that the audit deliberately placed **outside** core:
 format readers and writers, read-only analysis, networked lookups, and static
@@ -38,7 +38,7 @@ git push origin formats-v1.0.0
 ```
 
 The workflow stamps the version from the tag into `extension.json`, builds
-against the published SDK package, runs the whole test suite, and attaches
+against the SDK source, runs the whole test suite, and attaches
 `com.novalist.formats.zip` to a GitHub release. Adding it to the gallery is a
 separate, manual step.
 
