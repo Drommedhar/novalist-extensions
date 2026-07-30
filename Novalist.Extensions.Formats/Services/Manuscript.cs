@@ -12,14 +12,38 @@ public sealed record MsScene(string Title, string Html, string Text);
 public sealed record MsChapter(string Title, string Act, IReadOnlyList<MsScene> Scenes);
 
 /// <summary>
+/// What the export is of, beyond its chapters: who wrote it, what language it is
+/// in, and where its cover is.
+///
+/// This exists because a format that knows only the chapters produces a file that
+/// claims to be English and has no cover, whatever the writer set. The host knows
+/// all of it and now says so; this is where a writer reads it.
+/// </summary>
+public sealed record MsBook(
+    string Title,
+    string Author,
+    string Language,
+    string CoverPath,
+    bool IncludeTitlePage);
+
+/// <summary>
 /// The book, read once and handed to whichever writer was asked for.
 ///
 /// Every format here needs the same thing - chapters in order, scenes in order,
 /// prose as markup and as text - so it is assembled once rather than six times,
 /// and a writer becomes a pure function from this to a string.
 /// </summary>
-public sealed record Manuscript(string Title, IReadOnlyList<MsChapter> Chapters)
+public sealed record Manuscript(
+    string Title, IReadOnlyList<MsChapter> Chapters, MsBook? Book = null)
 {
+    /// <summary>
+    /// The book's details, defaulted for a caller that gave none. English is the
+    /// fallback language rather than the assumption: every real export path
+    /// passes what the host resolved.
+    /// </summary>
+    public MsBook Details =>
+        Book ?? new MsBook(Title, string.Empty, "en", string.Empty, true);
+
     public int WordCount => Chapters
         .SelectMany(c => c.Scenes)
         .Sum(s => Words(s.Text));
@@ -32,7 +56,8 @@ public sealed record Manuscript(string Title, IReadOnlyList<MsChapter> Chapters)
     /// left a placeholder scene meant to, and dropping it would renumber
     /// everything after it in the output.
     /// </summary>
-    public static async Task<Manuscript> ReadAsync(IHostServices host, string title)
+    public static async Task<Manuscript> ReadAsync(
+        IHostServices host, string title, MsBook? book = null)
     {
         var chapters = new List<MsChapter>();
         foreach (var chapter in host.ProjectService.GetChaptersOrdered())
@@ -49,7 +74,7 @@ public sealed record Manuscript(string Title, IReadOnlyList<MsChapter> Chapters)
                 host.ProjectService.GetScenesForChapter(chapter.Guid).FirstOrDefault()?.Id ?? string.Empty);
             chapters.Add(new MsChapter(chapter.Title, detail?.Act ?? string.Empty, scenes));
         }
-        return new Manuscript(title, chapters);
+        return new Manuscript(title, chapters, book);
     }
 
     /// <summary>

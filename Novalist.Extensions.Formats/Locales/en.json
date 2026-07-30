@@ -1,9 +1,21 @@
 {
   "formats": {
+    "fb2": "FictionBook 2",
+    "fountain": "Screenplay (Fountain)",
+    "html": "Web page (HTML)",
+    "importDelimited": "Import a CSV or TSV file",
+    "importDelimitedDesc": "One row per scene. Columns are found by header name.",
     "importFailed": "Import failed: {0}",
+    "importMarkdown": "Import a folder of Markdown or Ulysses sheets",
+    "importMarkdownDesc": "Subfolders become chapters; each file becomes a scene.",
     "importNeedsPath": "Import needs a path.",
+    "importScrivener": "Import a Scrivener project",
+    "importScrivenerDesc": "Folders in the binder become chapters; the text documents inside them become scenes.",
     "importSkipped": "{0} thing(s) were skipped: {1}",
     "imported": "Imported {0} chapter(s) and {1} scene(s).",
-    "importing": "Importing"
+    "importing": "Importing",
+    "odt": "OpenDocument Text",
+    "rtf": "Rich Text Format",
+    "txt": "Plain text"
   }
 }

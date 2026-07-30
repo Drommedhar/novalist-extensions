@@ -292,4 +292,163 @@ public class FormatsWriterTests
             if (File.Exists(path)) File.Delete(path);
         }
     }
+
+    // ── The book's details: who wrote it, what language, and its cover ──
+
+    /// <summary>
+    /// A cover on disk, so the writers that embed one have something to read.
+    /// A one-pixel PNG is enough: the point is that the bytes arrive, not what
+    /// they draw.
+    /// </summary>
+    private static string WriteCover(string name = "cover.png")
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "nl-cover-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, name);
+        File.WriteAllBytes(path, Convert.FromBase64String(OnePixelPng));
+        return path;
+    }
+
+    private const string OnePixelPng =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+    private static Manuscript WithDetails(MsBook details)
+        => OneScene("<p>A line.</p>") with { Book = details };
+
+    [Fact]
+    public void HtmlDeclaresTheBooksLanguageRatherThanEnglish()
+    {
+        var html = TextWriters.Html(WithDetails(
+            new MsBook("The Salt Road", string.Empty, "de", string.Empty, true)));
+
+        Assert.Contains("<html lang=\"de\">", html);
+        Assert.DoesNotContain("<html lang=\"en\">", html);
+    }
+
+    [Fact]
+    public void AManuscriptWithNoDetailsStillSaysSomethingSensible()
+    {
+        // Every real export path passes the host's answer. A test - or a caller
+        // written before this existed - gets English rather than an empty tag.
+        var html = TextWriters.Html(OneScene("<p>A line.</p>"));
+
+        Assert.Contains("<html lang=\"en\">", html);
+    }
+
+    [Fact]
+    public void TheCoverIsEmbeddedInTheHtmlRatherThanLinked()
+    {
+        var cover = WriteCover();
+        var html = TextWriters.Html(WithDetails(
+            new MsBook("The Salt Road", "Ada Cole", "en", cover, true)));
+
+        // Embedded, because a single file that loses its picture when it moves
+        // is not the self-contained file this format promises to be.
+        Assert.Contains("<img class=\"cover\" src=\"data:image/png;base64,", html);
+        Assert.DoesNotContain(cover, html);
+        Assert.Contains("<p class=\"author\">Ada Cole</p>", html);
+    }
+
+    [Fact]
+    public void AMissingOrUnreadableCoverIsNotAnError()
+    {
+        var missing = Path.Combine(Path.GetTempPath(), "nl-not-here", "cover.png");
+        Assert.Null(TextWriters.DataUri(missing));
+        Assert.Null(TextWriters.DataUri(string.Empty));
+        // A format nothing can decode is no cover rather than a broken one.
+        Assert.Null(TextWriters.DataUri(WriteCover("cover.tiff")));
+
+        var html = TextWriters.Html(WithDetails(
+            new MsBook("The Salt Road", string.Empty, "en", missing, true)));
+        Assert.DoesNotContain("<img class=\"cover\"", html);
+        Assert.Contains("The Salt Road", html);
+    }
+
+    [Fact]
+    public void AnEmptyCoverFileIsNoCover()
+    {
+        var path = WriteCover();
+        File.WriteAllBytes(path, []);
+
+        Assert.Null(TextWriters.DataUri(path));
+    }
+
+    [Fact]
+    public void FictionBookGetsTheLanguageTheAuthorAndTheCover()
+    {
+        var cover = WriteCover();
+        var fb2 = TextWriters.Fb2(WithDetails(
+            new MsBook("The Salt Road", "Ada Marie Cole", "de-DE", cover, true)));
+
+        // FictionBook wants the bare subtag, so "de-DE" is "de".
+        Assert.Contains("<lang>de</lang>", fb2);
+        Assert.Contains("<first-name>Ada Marie</first-name>", fb2);
+        Assert.Contains("<last-name>Cole</last-name>", fb2);
+        Assert.Contains("<coverpage><image l:href=\"#cover.png\"/></coverpage>", fb2);
+        Assert.Contains("<binary id=\"cover.png\" content-type=\"image/png\">", fb2);
+    }
+
+    [Fact]
+    public void FictionBookLeavesOutWhatWasNotGiven()
+    {
+        var fb2 = TextWriters.Fb2(OneScene("<p>A line.</p>"));
+
+        Assert.Contains("<lang>en</lang>", fb2);
+        Assert.DoesNotContain("<author>", fb2);
+        Assert.DoesNotContain("<coverpage>", fb2);
+        Assert.DoesNotContain("<binary", fb2);
+    }
+
+    [Fact]
+    public void AOneWordAuthorIsASurname()
+    {
+        Assert.Equal((string.Empty, "Cole"), TextWriters.SplitName("Cole"));
+        Assert.Equal(("Ada", "Cole"), TextWriters.SplitName("  Ada Cole  "));
+    }
+
+    [Fact]
+    public void AnEmptyLanguageIsEnglishRatherThanNothing()
+    {
+        Assert.Equal("en", TextWriters.ShortLanguage(" "));
+        Assert.Equal("pt", TextWriters.ShortLanguage("pt-BR"));
+        Assert.Equal("fr", TextWriters.ShortLanguage("fr"));
+    }
+
+    [Fact]
+    public void PlainTextAndRtfNameTheAuthorUnderTheTitle()
+    {
+        var book = WithDetails(new MsBook("The Salt Road", "Ada Cole", "en", string.Empty, true));
+
+        Assert.Contains("The Salt Road\nAda Cole", TextWriters.PlainText(book).Replace("\r\n", "\n"));
+        Assert.Contains(@"Ada Cole\fs24\par", TextWriters.Rtf(book));
+    }
+
+    [Fact]
+    public async Task OpenDocumentCarriesTheLanguageAndTheAuthor()
+    {
+        var book = WithDetails(new MsBook("The Salt Road", "Ada Cole", "de-DE", string.Empty, true));
+        var path = Path.Combine(
+            Path.GetTempPath(), "nl-odt-" + Guid.NewGuid().ToString("N"), "book.odt");
+
+        await OdtWriter.WriteAsync(book, path);
+
+        using var archive = ZipFile.OpenRead(path);
+        var styles = new StreamReader(archive.GetEntry("styles.xml")!.Open()).ReadToEnd();
+        var content = new StreamReader(archive.GetEntry("content.xml")!.Open()).ReadToEnd();
+
+        // A word processor spell-checks against whatever the document claims to
+        // be. Claiming English for a German novel underlines every second word.
+        Assert.Contains("fo:language=\"de\"", styles);
+        Assert.Contains("fo:country=\"DE\"", styles);
+        Assert.Contains("Ada Cole", content);
+    }
+
+    [Fact]
+    public void ALanguageWithNoCountryLeavesTheCountryOut()
+    {
+        Assert.Equal(("en", string.Empty), OdtWriter.LanguageParts(string.Empty));
+        Assert.Equal(("fr", string.Empty), OdtWriter.LanguageParts("FR"));
+        Assert.Equal(("pt", "BR"), OdtWriter.LanguageParts("pt-BR"));
+    }
+
 }

@@ -1,9 +1,21 @@
 {
   "formats": {
+    "fb2": "FictionBook 2",
+    "fountain": "Drehbuch (Fountain)",
+    "html": "Webseite (HTML)",
+    "importDelimited": "CSV- oder TSV-Datei importieren",
+    "importDelimitedDesc": "Eine Zeile pro Szene. Die Spalten werden über die Kopfzeile gefunden.",
     "importFailed": "Import fehlgeschlagen: {0}",
+    "importMarkdown": "Ordner mit Markdown- oder Ulysses-Dateien importieren",
+    "importMarkdownDesc": "Unterordner werden zu Kapiteln, jede Datei zu einer Szene.",
     "importNeedsPath": "Für den Import wird ein Pfad benötigt.",
+    "importScrivener": "Scrivener-Projekt importieren",
+    "importScrivenerDesc": "Ordner im Binder werden zu Kapiteln, die Textdokumente darin zu Szenen.",
     "importSkipped": "{0} Element(e) übersprungen: {1}",
     "imported": "{0} Kapitel und {1} Szene(n) importiert.",
-    "importing": "Import läuft"
+    "importing": "Import läuft",
+    "odt": "OpenDocument-Text",
+    "rtf": "Rich Text Format",
+    "txt": "Reiner Text"
   }
 }

@@ -133,6 +133,7 @@ public sealed class FakeHost : IHostServices, IExtensionProjectService, IExtensi
     public IExtensionReviewService ReviewService => No<IExtensionReviewService>();
     public string HostVersion => "2.3.0";
     public string CurrentLanguage => "en";
+    public string WritingLanguage { get; set; } = "en";
     public string CurrentLanguageDisplayName => "English";
 
     string? IExtensionProjectService.ProjectRoot => "/project";

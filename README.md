@@ -19,10 +19,10 @@ These are the ones to add to the gallery.
 
 | Extension | Id | Tag prefix | What it does |
 | --- | --- | --- | --- |
-| **Formats** | `com.novalist.formats` | `formats-v*` | Exports to HTML, RTF, ODT, plain text, Fountain and FictionBook 2. Imports Scrivener projects, Ulysses sheets, folders of Markdown, and CSV/TSV files. Checks a finished EPUB before you send it. |
+| **Formats** | `com.novalist.formats` | `formats-v*` | Exports to HTML, RTF, ODT, plain text, Fountain and FictionBook 2, each marked with the language you write in and carrying your cover where the format can hold one. Imports Scrivener projects, Ulysses sheets, folders of Markdown, and CSV/TSV files. Checks a finished EPUB before you send it. |
 | **Insight** | `com.novalist.insight` | `insight-v*` | Read-only reports over the whole manuscript: name drift and consistency, project health (orphan entries, dangling links, unused images), a continuity worklist when a Codex entry changes, a word-frequency concordance, and a pacing curve. |
 | **Toolkit** | `com.novalist.toolkit` | `toolkit-v*` | Writing sprints and a Pomodoro timer, a task board over your to-do comments, dictionary and thesaurus lookup on a selected word, and web page capture that keeps the readable text rather than just the title. |
-| **Publish** | `com.novalist.publish` | `publish-v*` | Generates a self-contained static website from your wiki, your world bible or your manuscript, for sharing a draft or publishing a series bible. |
+| **Publish** | `com.novalist.publish` | `publish-v*` | Generates a self-contained static website from your wiki, your world bible or your manuscript, for sharing a draft or publishing a series bible. Codex sections keep their Markdown formatting and their links, and the site is written in your language. |
 
 Each row is one release artefact: `com.novalist.<name>.zip`, containing the
 assembly, its manifest, and any locale, web or data files.
@@ -49,7 +49,8 @@ EPUB check has no business bumping the version of the writing timer.
 
 Everything here uses SDK surface that was added for it: research items, review
 remarks and suggested edits, scene metadata, structural editing, the command
-bus, export checks and the file picker.
+bus, export checks, the file picker, and an export context that carries the
+book's language, author and cover rather than just a path and a title.
 
 **That surface is not on NuGet yet.** The published `Novalist.Sdk` is 11.1.0,
 which predates all of it; these need 11.2.0, which reaches NuGet only when the

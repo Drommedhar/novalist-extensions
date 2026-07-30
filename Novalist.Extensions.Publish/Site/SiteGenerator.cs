@@ -99,7 +99,7 @@ public static partial class SiteGenerator
 
         if (chapters.Count > 0)
         {
-            body.Append("<h2>Contents</h2><ol class=\"contents\">");
+            body.Append($"<h2>{Esc(options.Text.Contents)}</h2><ol class=\"contents\">");
             for (var i = 0; i < chapters.Count; i++)
             {
                 body.Append($"<li><a href=\"chapter-{i + 1}.html\">{Esc(chapters[i].Title)}</a>");
@@ -116,7 +116,8 @@ public static partial class SiteGenerator
                      .GroupBy(e => e.TypeKey, StringComparer.OrdinalIgnoreCase)
                      .OrderBy(g => KindOrder(g.Key)))
         {
-            body.Append($"<h2>{Esc(KindName(group.Key, plural: true))}</h2><ul class=\"entries\">");
+            body.Append(
+                $"<h2>{Esc(KindName(group.Key, true, options.Text))}</h2><ul class=\"entries\">");
             foreach (var entry in group.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase))
             {
                 body.Append($"<li><a href=\"{slugs[entry.Id]}.html\">{Esc(entry.Name)}</a>");
@@ -128,7 +129,7 @@ public static partial class SiteGenerator
         }
 
         if (entries.Count == 0 && chapters.Count == 0)
-            body.Append("<p class=\"empty\">Nothing was selected to publish.</p>");
+            body.Append($"<p class=\"empty\">{Esc(options.Text.NothingSelected)}</p>");
 
         return Page(options.Title, body.ToString(), options, isIndex: true);
     }
@@ -137,22 +138,28 @@ public static partial class SiteGenerator
         SiteEntry entry, Dictionary<string, string> slugs, SiteOptions options)
     {
         var body = new StringBuilder();
-        body.Append($"<p class=\"kind\">{Esc(KindName(entry.TypeKey, plural: false))}</p>");
+        body.Append(
+            $"<p class=\"kind\">{Esc(KindName(entry.TypeKey, false, options.Text))}</p>");
         body.Append($"<h1>{Esc(entry.Name)}</h1>");
 
         if (entry.Aliases.Count > 0)
-            body.Append($"<p class=\"aliases\">Also: {Esc(string.Join(", ", entry.Aliases))}</p>");
+            body.Append($"<p class=\"aliases\">{Esc(options.Text.AlsoKnownAs)} "
+                + $"{Esc(string.Join(", ", entry.Aliases))}</p>");
 
+        // Section content is Markdown - it is what the Codex editor stores and
+        // what the wiki renders - so it is rendered rather than stripped.
+        // Stripping the tags and stopping is what left **bold** sitting in a
+        // published page as four literal asterisks.
+        var link = Linker(slugs);
         foreach (var (title, content) in entry.Sections)
         {
             if (string.IsNullOrWhiteSpace(content)) continue;
             if (!string.IsNullOrWhiteSpace(title)) body.Append($"<h2>{Esc(title)}</h2>");
-            foreach (var paragraph in Paragraphs(content))
-                body.Append($"<p>{Links(paragraph, slugs)}</p>");
+            body.Append(Markup.ToHtml(content, link));
         }
 
         if (entry.Sections.All(s => string.IsNullOrWhiteSpace(s.Content)))
-            body.Append("<p class=\"empty\">Nothing written here yet.</p>");
+            body.Append($"<p class=\"empty\">{Esc(options.Text.NothingWritten)}</p>");
 
         return Page($"{entry.Name} - {options.Title}", body.ToString(), options);
     }
@@ -182,16 +189,18 @@ public static partial class SiteGenerator
         }
 
         if (chapter.Scenes.All(s => s.Paragraphs.Count == 0))
-            body.Append("<p class=\"empty\">This chapter has no prose yet.</p>");
+            body.Append($"<p class=\"empty\">{Esc(options.Text.NoProse)}</p>");
 
         // Reading a book means going to the next chapter, so that link is the one
         // thing every page here has to get right.
         body.Append("<nav class=\"pager\">");
         if (index > 0)
-            body.Append($"<a href=\"chapter-{index}.html\">Previous</a>");
-        body.Append("<a href=\"index.html\">Contents</a>");
+            body.Append(
+                $"<a href=\"chapter-{index}.html\">{Esc(options.Text.Previous)}</a>");
+        body.Append($"<a href=\"index.html\">{Esc(options.Text.Contents)}</a>");
         if (index + 1 < chapters.Count)
-            body.Append($"<a href=\"chapter-{index + 2}.html\">Next</a>");
+            body.Append(
+                $"<a href=\"chapter-{index + 2}.html\">{Esc(options.Text.Next)}</a>");
         body.Append("</nav>");
 
         return Page($"{chapter.Title} - {options.Title}", body.ToString(), options);
@@ -207,9 +216,7 @@ public static partial class SiteGenerator
     /// </summary>
     internal static string Links(string text, Dictionary<string, string> slugs)
     {
-        var bySlug = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var slug in slugs.Values) bySlug[slug] = slug;
-
+        var link = Linker(slugs);
         return WikiLinkRegex().Replace(Esc(text), match =>
         {
             // Escaped before matching, so the link syntax is read out of already
@@ -219,24 +226,26 @@ public static partial class SiteGenerator
                 ? match.Groups[2].Value.Trim()
                 : target;
 
-            var slug = Slug(target);
-            return bySlug.ContainsKey(slug)
-                ? $"<a href=\"{slug}.html\">{label}</a>"
-                : label;
+            var href = link(target);
+            return href == null ? label : $"<a href=\"{href}\">{label}</a>";
         });
     }
 
-    private static IReadOnlyList<string> Paragraphs(string content)
+    /// <summary>
+    /// Where a [[Name]] points, or null when it points at nothing published.
+    ///
+    /// A world-only site legitimately has no page for a scene, and a link into
+    /// a folder that does not contain the target is a broken link in somebody
+    /// else's browser - which is worse than no link at all.
+    /// </summary>
+    internal static Func<string, string?> Linker(Dictionary<string, string> slugs)
     {
-        // Section content is markup; the paragraphs are what matter and the rest
-        // of the editor's markup has no business in a published page.
-        var withBreaks = Regex.Replace(
-            content, @"</p\s*>|<br\s*/?>", "\n", RegexOptions.IgnoreCase);
-        var stripped = Regex.Replace(withBreaks, "<[^>]+>", string.Empty);
-        return [.. System.Net.WebUtility.HtmlDecode(stripped)
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Select(p => p.Trim())
-            .Where(p => p.Length > 0)];
+        var published = new HashSet<string>(slugs.Values, StringComparer.OrdinalIgnoreCase);
+        return target =>
+        {
+            var slug = Slug(target.Trim());
+            return published.Contains(slug) ? $"{slug}.html" : null;
+        };
     }
 
     /// <summary>
@@ -247,7 +256,7 @@ public static partial class SiteGenerator
     {
         var output = new StringBuilder();
         output.AppendLine("<!doctype html>");
-        output.AppendLine("<html lang=\"en\">");
+        output.AppendLine($"<html lang=\"{Esc(options.Language)}\">");
         output.AppendLine("<head>");
         output.AppendLine("<meta charset=\"utf-8\">");
         output.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
@@ -304,14 +313,15 @@ public static partial class SiteGenerator
         _ => 4
     };
 
-    private static string KindName(string typeKey, bool plural) => typeKey.ToLowerInvariant() switch
-    {
-        "character" => plural ? "People" : "Character",
-        "location" => plural ? "Places" : "Location",
-        "item" => plural ? "Things" : "Item",
-        "lore" => plural ? "Lore" : "Lore",
-        _ => plural ? "Other" : "Entry"
-    };
+    private static string KindName(string typeKey, bool plural, SiteText text)
+        => typeKey.ToLowerInvariant() switch
+        {
+            "character" => plural ? text.People : text.Character,
+            "location" => plural ? text.Places : text.Location,
+            "item" => plural ? text.Things : text.Item,
+            "lore" => text.Lore,
+            _ => plural ? text.Other : text.Entry
+        };
 
     private static string Esc(string text) => (text ?? string.Empty)
         .Replace("&", "&amp;")

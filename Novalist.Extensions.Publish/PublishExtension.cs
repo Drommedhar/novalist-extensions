@@ -208,6 +208,14 @@ public sealed class PublishExtension : IExtension, IWizardContributor
                 Scope = Enum.TryParse<SiteScope>(Text(root, "scope"), true, out var scope)
                     ? scope
                     : SiteScope.World,
+                // The pages declare the language the book is written in, which is
+                // not necessarily the one the menus are in - somebody can read
+                // Novalist in English and write in German. The site's own words
+                // follow the interface, because they are interface.
+                Language = string.IsNullOrWhiteSpace(_host.WritingLanguage)
+                    ? "en"
+                    : _host.WritingLanguage,
+                Text = Wording(),
                 DiscourageCrawlers =
                     !root.TryGetProperty("discourageCrawlers", out var crawlers)
                     || crawlers.ValueKind != JsonValueKind.False
@@ -274,6 +282,30 @@ public sealed class PublishExtension : IExtension, IWizardContributor
                 _loc.T("publish.writeFailed").Replace("{0}", ex.Message));
         }
     }
+
+    /// <summary>
+    /// The words the site puts on a page that the writer did not write, in their
+    /// language. The generator has no host to ask, so they are handed to it.
+    /// </summary>
+    private SiteText Wording() => new()
+    {
+        Contents = _loc.T("publish.site.contents"),
+        Previous = _loc.T("publish.site.previous"),
+        Next = _loc.T("publish.site.next"),
+        AlsoKnownAs = _loc.T("publish.site.alsoKnownAs"),
+        NothingSelected = _loc.T("publish.site.nothingSelected"),
+        NothingWritten = _loc.T("publish.site.nothingWritten"),
+        NoProse = _loc.T("publish.site.noProse"),
+        People = _loc.T("publish.site.people"),
+        Places = _loc.T("publish.site.places"),
+        Things = _loc.T("publish.site.things"),
+        Lore = _loc.T("publish.site.lore"),
+        Other = _loc.T("publish.site.other"),
+        Character = _loc.T("publish.site.character"),
+        Location = _loc.T("publish.site.location"),
+        Item = _loc.T("publish.site.item"),
+        Entry = _loc.T("publish.site.entry")
+    };
 
     /// <summary>
     /// Reads what the chosen scope needs, and no more. A manuscript-only site does

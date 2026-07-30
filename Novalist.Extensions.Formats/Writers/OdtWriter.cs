@@ -29,7 +29,7 @@ public static class OdtWriter
             await writer.WriteAsync("application/vnd.oasis.opendocument.text");
 
         await AddAsync(archive, "META-INF/manifest.xml", Manifest());
-        await AddAsync(archive, "styles.xml", Styles());
+        await AddAsync(archive, "styles.xml", Styles(book.Details.Language));
         await AddAsync(archive, "content.xml", Content(book));
     }
 
@@ -51,21 +51,47 @@ public static class OdtWriter
         </manifest:manifest>
         """;
 
-    private static string Styles() =>
-        """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <office:document-styles
-            xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
-            xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
-            xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
-            office:version="1.2">
-          <office:styles>
-            <style:style style:name="Standard" style:family="paragraph">
-              <style:text-properties style:font-name="Times New Roman" fo:font-size="12pt"/>
-            </style:style>
-          </office:styles>
-        </office:document-styles>
-        """;
+    /// <summary>
+    /// The document's styles, carrying the language the book is written in.
+    ///
+    /// A word processor spell-checks against whatever the document says its
+    /// language is. Saying "en" for a German novel underlines every second word,
+    /// which is how a writer discovers that the export lied about them.
+    /// </summary>
+    private static string Styles(string language)
+    {
+        var (tag, country) = LanguageParts(language);
+        var locale = $" fo:language=\"{Esc(tag)}\""
+            + (country.Length > 0 ? $" fo:country=\"{Esc(country)}\"" : string.Empty);
+
+        return $"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <office:document-styles
+                xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+                xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+                xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
+                office:version="1.2">
+              <office:styles>
+                <style:style style:name="Standard" style:family="paragraph">
+                  <style:text-properties style:font-name="Times New Roman" fo:font-size="12pt"{locale}/>
+                </style:style>
+              </office:styles>
+            </office:document-styles>
+            """;
+    }
+
+    /// <summary>
+    /// A BCP-47 tag split the way ODF wants it: language and country separately,
+    /// with the country left off when the tag does not name one.
+    /// </summary>
+    internal static (string Language, string Country) LanguageParts(string language)
+    {
+        if (string.IsNullOrWhiteSpace(language)) return ("en", string.Empty);
+        var parts = language.Split('-', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length > 1
+            ? (parts[0].ToLowerInvariant(), parts[^1].ToUpperInvariant())
+            : (parts[0].ToLowerInvariant(), string.Empty);
+    }
 
     private static string Content(Manuscript book)
     {
@@ -82,6 +108,7 @@ public static class OdtWriter
         // Body, first-line-indented body, chapter heading and title. Four styles
         // is what a manuscript needs; anything more is a word processor's job.
         output.AppendLine(ParagraphStyle("NlTitle", "24pt", "bold", "center", null));
+        output.AppendLine(ParagraphStyle("NlAuthor", "14pt", null, "center", null));
         output.AppendLine(ParagraphStyle("NlChapter", "16pt", "bold", "center", null));
         output.AppendLine(ParagraphStyle("NlFirst", "12pt", null, null, "0cm"));
         output.AppendLine(ParagraphStyle("NlBody", "12pt", null, null, "0.5cm"));
@@ -91,6 +118,9 @@ public static class OdtWriter
         output.AppendLine("  <office:body>");
         output.AppendLine("    <office:text>");
         output.AppendLine($"      <text:p text:style-name=\"NlTitle\">{Esc(book.Title)}</text:p>");
+        if (!string.IsNullOrWhiteSpace(book.Details.Author))
+            output.AppendLine(
+                $"      <text:p text:style-name=\"NlAuthor\">{Esc(book.Details.Author)}</text:p>");
 
         foreach (var chapter in book.Chapters)
         {

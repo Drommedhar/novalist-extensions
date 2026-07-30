@@ -56,25 +56,28 @@ public sealed class FormatsExtension : IExtension, IExportFormatContributor
 
     public IReadOnlyList<ExportFormatDescriptor> GetExportFormats() =>
     [
-        Text("html", "Web page (HTML)", ".html",
+        // HTML embeds the cover as a data URI and FictionBook has a coverpage
+        // element for it. The rest have nowhere to put a picture, so they say so
+        // and the Export view hides the toggle rather than offering a lie.
+        Text("html", "formats.html", ".html",
             "M4 4h16v16H4z M8 9h8 M8 13h5",
-            TextWriters.Html),
-        Text("rtf", "Rich Text Format", ".rtf",
+            TextWriters.Html, supportsCover: true),
+        Text("rtf", "formats.rtf", ".rtf",
             "M6 3h9l5 5v13H6z M14 3v6h6",
             TextWriters.Rtf),
-        Text("txt", "Plain text", ".txt",
+        Text("txt", "formats.txt", ".txt",
             "M5 4h14 M5 9h14 M5 14h9 M5 19h6",
             TextWriters.PlainText),
-        Text("fountain", "Screenplay (Fountain)", ".fountain",
+        Text("fountain", "formats.fountain", ".fountain",
             "M4 3h16v18H4z M8 7h8 M8 11h4 M8 15h8",
             TextWriters.Fountain),
-        Text("fb2", "FictionBook 2", ".fb2",
+        Text("fb2", "formats.fb2", ".fb2",
             "M4 4h12l4 4v12H4z M9 12h6 M9 16h4",
-            TextWriters.Fb2),
+            TextWriters.Fb2, supportsCover: true),
         new ExportFormatDescriptor
         {
             FormatKey = "odt",
-            DisplayName = "OpenDocument Text",
+            DisplayName = _loc.T("formats.odt"),
             FileExtension = ".odt",
             Icon = string.Empty,
             IconPath = "M6 3h9l5 5v13H6z M9 12h6 M9 16h5",
@@ -89,14 +92,16 @@ public sealed class FormatsExtension : IExtension, IExportFormatContributor
     /// stray character in half the tools that read them.
     /// </summary>
     private ExportFormatDescriptor Text(
-        string key, string name, string extension, string iconPath, Func<Manuscript, string> write)
+        string key, string nameKey, string extension, string iconPath,
+        Func<Manuscript, string> write, bool supportsCover = false)
         => new()
         {
             FormatKey = key,
-            DisplayName = name,
+            DisplayName = _loc.T(nameKey),
             FileExtension = extension,
             Icon = string.Empty,
             IconPath = iconPath,
+            SupportsCover = supportsCover,
             Export = async context =>
             {
                 var book = await ReadBookAsync(context);
@@ -107,10 +112,21 @@ public sealed class FormatsExtension : IExtension, IExportFormatContributor
             }
         };
 
+    /// <summary>
+    /// The book, plus everything the host knows about it that a format needs: the
+    /// author, the language the writer works in, and where their cover is. Without
+    /// these every file here claimed to be English and had no picture on the front.
+    /// </summary>
     private Task<Manuscript> ReadBookAsync(ExportContext context)
-        => Manuscript.ReadAsync(_host, string.IsNullOrWhiteSpace(context.BookName)
-            ? "Untitled"
-            : context.BookName);
+    {
+        var title = string.IsNullOrWhiteSpace(context.BookName) ? "Untitled" : context.BookName;
+        return Manuscript.ReadAsync(_host, title, new MsBook(
+            title,
+            context.Author,
+            string.IsNullOrWhiteSpace(context.Language) ? "en" : context.Language,
+            context.CoverImagePath,
+            context.IncludeTitlePage));
+    }
 
     // ── Importers, exposed as commands ──
 
@@ -123,16 +139,16 @@ public sealed class FormatsExtension : IExtension, IExportFormatContributor
         Func<IHostServices, string, Task<ImportReport>> Run)> ImportCommands => new()
     {
         ["com.novalist.formats.import.scrivener"] = (
-            "Import a Scrivener project",
-            "Folders in the binder become chapters; the text documents inside them become scenes.",
+            _loc.T("formats.importScrivener"),
+            _loc.T("formats.importScrivenerDesc"),
             ProjectImporters.ScrivenerAsync),
         ["com.novalist.formats.import.markdown"] = (
-            "Import a folder of Markdown or Ulysses sheets",
-            "Subfolders become chapters; each file becomes a scene.",
+            _loc.T("formats.importMarkdown"),
+            _loc.T("formats.importMarkdownDesc"),
             ProjectImporters.MarkdownFolderAsync),
         ["com.novalist.formats.import.delimited"] = (
-            "Import a CSV or TSV file",
-            "One row per scene. Columns are found by header name.",
+            _loc.T("formats.importDelimited"),
+            _loc.T("formats.importDelimitedDesc"),
             ProjectImporters.DelimitedAsync)
     };
 
