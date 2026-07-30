@@ -79,6 +79,7 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
   <button class="tab" data-kind="concordance" data-t="tabConcordance"></button>
   <button class="tab" data-kind="pacing" data-t="tabPacing"></button>
   <button class="tab" data-kind="presence" data-t="tabPresence"></button>
+  <button class="tab" data-kind="statistics" data-t="tabStatistics"></button>
 </div>
 <div id="toolbar"></div>
 <div id="body"></div>
@@ -251,6 +252,31 @@ const draw = {
       '<th>' + escape(t('presenceRange')) + '</th>' +
       '<th>' + escape(t('presenceGap')) + '</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table>';
+  },
+
+  statistics(p) {
+    if (p.error) return failed(p.error);
+    const r = p.row || {};
+    const n = (v) => (v || 0).toLocaleString();
+    const line = (label, value) =>
+      '<tr><td>' + escape(label) + '</td><td class="num">' + value + '</td></tr>';
+
+    bodyEl.innerHTML =
+      '<table><tbody>' +
+      line(t('statsChapters'), n(r.chapters)) +
+      line(t('statsScenes'), n(r.scenes)) +
+      line(t('statsWords'), n(r.words)) +
+      line(t('statsCharacters'), n(r.characters)) +
+      line(t('statsCharactersNoSpaces'), n(r.charactersNoSpaces)) +
+      // Both bases, not one: words per page is what a writer means by a
+      // paperback page, and characters per page is closer for a language where
+      // a word count says less about set length.
+      line(t('statsBasisWords') + ' (' + n(p.wordsPerPage) + ' ' + t('statsPerPage') + ')',
+        n(p.pagesByWords)) +
+      line(t('statsBasisCharacters') + ' (' + n(p.charactersPerPage) + ' ' + t('statsPerPage') + ')',
+        n(p.pagesByCharacters)) +
+      '</tbody></table>' +
+      '<p class="hint">' + escape(t('statsEstimate')) + '</p>';
   }
 };
 
@@ -291,6 +317,30 @@ function show(kind) {
   document.querySelectorAll('.tab').forEach((t) =>
     t.classList.toggle('active', t.dataset.kind === kind));
   toolbarEl.innerHTML = '';
+
+  if (kind === 'statistics') {
+    toolbarEl.innerHTML =
+      '<label>' + escape(t('statsBasisWords')) +
+      ' <input type="number" id="wpp" min="1" max="2000" value="350"></label>' +
+      '<label>' + escape(t('statsBasisCharacters')) +
+      ' <input type="number" id="cpp" min="1" max="20000" value="1800"></label>' +
+      '<label><input type="checkbox" id="inactive"> ' +
+      escape(t('statsIncludeInactive')) + '</label>';
+    const run = () => {
+      busy();
+      post({
+        kind: 'statistics',
+        wordsPerPage: Number(document.getElementById('wpp').value) || 350,
+        charactersPerPage: Number(document.getElementById('cpp').value) || 1800,
+        includeInactive: document.getElementById('inactive').checked
+      });
+    };
+    document.getElementById('wpp').onchange = run;
+    document.getElementById('cpp').onchange = run;
+    document.getElementById('inactive').onchange = run;
+    run();
+    return;
+  }
 
   if (kind === 'concordance') {
     toolbarEl.innerHTML =

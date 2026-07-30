@@ -45,6 +45,21 @@
     "presenceNone": "Noch keine Figuren im Codex.",
     "presenceRange": "Von / bis",
     "reading": "Manuskript wird gelesen...",
-    "unreadable": "Diese Anfrage war nicht lesbar."
+    "unreadable": "Diese Anfrage war nicht lesbar.",
+    "statistics": "Statistik",
+    "statsScope": "Umfang",
+    "statsDraft": "Fassung",
+    "statsChapters": "Kapitel",
+    "statsScenes": "Szenen",
+    "statsWords": "Wörter",
+    "statsCharacters": "Zeichen",
+    "statsCharactersNoSpaces": "Zeichen ohne Leerzeichen",
+    "statsPages": "Seiten",
+    "statsBasis": "Seitenbasis",
+    "statsBasisWords": "Seiten nach Wörtern",
+    "statsBasisCharacters": "Seiten nach Zeichen",
+    "statsPerPage": "pro Seite",
+    "statsEstimate": "Seitenzahlen sind Schätzungen. Exakt ist allein der Normseiten-DOCX-Export, der den Text auf ein festes Raster setzt.",
+    "statsIncludeInactive": "Geparkte Szenen mitzählen"
   }
 }

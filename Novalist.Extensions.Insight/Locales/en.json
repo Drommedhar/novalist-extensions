@@ -45,6 +45,21 @@
     "presenceNone": "No characters in the Codex yet.",
     "presenceRange": "From / to",
     "reading": "Reading the manuscript...",
-    "unreadable": "That request was not readable."
+    "unreadable": "That request was not readable.",
+    "statistics": "Statistics",
+    "statsScope": "Scope",
+    "statsDraft": "Draft",
+    "statsChapters": "Chapters",
+    "statsScenes": "Scenes",
+    "statsWords": "Words",
+    "statsCharacters": "Characters",
+    "statsCharactersNoSpaces": "Characters without spaces",
+    "statsPages": "Pages",
+    "statsBasis": "Page basis",
+    "statsBasisWords": "Pages by words",
+    "statsBasisCharacters": "Pages by characters",
+    "statsPerPage": "per page",
+    "statsEstimate": "Page counts are estimates. The only exact page count Novalist produces is the Normseiten DOCX export, which lays the text on a fixed grid.",
+    "statsIncludeInactive": "Count parked scenes"
   }
 }

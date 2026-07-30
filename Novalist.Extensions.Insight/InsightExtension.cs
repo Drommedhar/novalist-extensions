@@ -108,6 +108,7 @@ internal sealed class ReportController(IHostServices host, string extensionId) :
             "concordance" => Reply(kind, await ConcordanceAsync(root)),
             "pacing" => Reply(kind, await PacingAsync()),
             "presence" => Reply(kind, await PresenceAsync()),
+            "statistics" => Reply(kind, await StatisticsAsync(root)),
             "continuity" => Reply("continuity", await ContinuityAsync()),
             "continuityReviewed" => Reply("continuity", await MarkReviewedAsync(root)),
             "continuityRebase" => Reply("continuity", await RebaseAsync()),
@@ -136,6 +137,22 @@ internal sealed class ReportController(IHostServices host, string extensionId) :
         ["tabConcordance"] = _loc.T("insight.concordance"),
         ["tabPacing"] = _loc.T("insight.pacing"),
         ["tabPresence"] = _loc.T("insight.presence"),
+        ["tabStatistics"] = _loc.T("insight.statistics"),
+
+        ["statsScope"] = _loc.T("insight.statsScope"),
+        ["statsDraft"] = _loc.T("insight.statsDraft"),
+        ["statsChapters"] = _loc.T("insight.statsChapters"),
+        ["statsScenes"] = _loc.T("insight.statsScenes"),
+        ["statsWords"] = _loc.T("insight.statsWords"),
+        ["statsCharacters"] = _loc.T("insight.statsCharacters"),
+        ["statsCharactersNoSpaces"] = _loc.T("insight.statsCharactersNoSpaces"),
+        ["statsPages"] = _loc.T("insight.statsPages"),
+        ["statsBasis"] = _loc.T("insight.statsBasis"),
+        ["statsBasisWords"] = _loc.T("insight.statsBasisWords"),
+        ["statsBasisCharacters"] = _loc.T("insight.statsBasisCharacters"),
+        ["statsPerPage"] = _loc.T("insight.statsPerPage"),
+        ["statsEstimate"] = _loc.T("insight.statsEstimate"),
+        ["statsIncludeInactive"] = _loc.T("insight.statsIncludeInactive"),
 
         ["presenceHint"] = _loc.T("insight.presenceHint"),
         ["presenceNone"] = _loc.T("insight.presenceNone"),
@@ -288,6 +305,69 @@ internal sealed class ReportController(IHostServices host, string extensionId) :
         var curve = PacingCurve.Build(points);
         return new { points = curve, observations = PacingCurve.Observe(curve) };
     }
+
+    /// <summary>
+    /// What is in the manuscript, counted, with a page estimate.
+    ///
+    /// The status bar has a popover of counts and the only exact page number
+    /// anywhere comes out of the Normseiten export - so "how long is this book,
+    /// in the shape it will be printed" meant exporting to find out.
+    /// </summary>
+    private async Task<object> StatisticsAsync(JsonElement root)
+    {
+        var wordsPerPage = Number(root, "wordsPerPage", ProjectStatistics.DefaultWordsPerPage);
+        var charactersPerPage = Number(
+            root, "charactersPerPage", ProjectStatistics.DefaultCharactersPerPage);
+        // Inactive scenes are out of the book and out of its length, unless the
+        // writer is measuring the plan rather than the manuscript.
+        var includeInactive = root.TryGetProperty("includeInactive", out var flag)
+                              && flag.ValueKind == JsonValueKind.True;
+
+        var chapters = 0;
+        var scenes = 0;
+        var words = 0;
+        var withSpaces = 0;
+        var withoutSpaces = 0;
+
+        foreach (var chapter in host.ProjectService.GetChaptersOrdered())
+        {
+            chapters++;
+            foreach (var scene in host.ProjectService.GetScenesForChapter(chapter.Guid))
+            {
+                var detail = host.StoryService.GetSceneDetail(chapter.Guid, scene.Id);
+                if (!includeInactive && detail?.Inactive == true) continue;
+
+                scenes++;
+                words += scene.WordCount;
+                var text = Prose.ToText(
+                    await host.ProjectService.ReadSceneContentAsync(chapter.Guid, scene.Id));
+                var (all, dense) = ProjectStatistics.CountCharacters(text);
+                withSpaces += all;
+                withoutSpaces += dense;
+            }
+        }
+
+        var row = new StatisticsRow(
+            "draft", chapters, scenes, words, withSpaces, withoutSpaces);
+        return new
+        {
+            row,
+            wordsPerPage,
+            charactersPerPage,
+            pagesByWords = ProjectStatistics.Pages(row, PageBasis.Words, wordsPerPage, charactersPerPage),
+            pagesByCharacters =
+                ProjectStatistics.Pages(row, PageBasis.Characters, wordsPerPage, charactersPerPage)
+        };
+    }
+
+    /// <summary>A positive number from the request, or the default.</summary>
+    private static int Number(JsonElement root, string property, int fallback)
+        => root.TryGetProperty(property, out var value)
+           && value.ValueKind == JsonValueKind.Number
+           && value.TryGetInt32(out var parsed)
+           && parsed > 0
+            ? parsed
+            : fallback;
 
     /// <summary>
     /// Who drops out of the book, and where.
