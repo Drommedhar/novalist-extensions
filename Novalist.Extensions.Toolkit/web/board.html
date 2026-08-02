@@ -2,19 +2,36 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<script src="__novalist/theme.js"></script>
 <title>Toolkit</title>
 <style>
-/* The host injects no variables into an extension frame, so the palette lives
-   here. Matched to the app's dark theme, which is what this sits inside. */
 :root {
-  --bg: #1e1e1e; --card: #252526; --border: #3a3a3d; --text: #e6edf3;
-  --dim: #b9bac5; --subtle: #8b9198; --accent: #0e8bdf; --open: #d8a13a;
+  /* Novalist hands the whole --nl-* set to a panel that asks for it (the theme
+     shim above), so this panel follows the writer's theme instead of pinning
+     one dark palette. The hex is the fallback for a host too old to send
+     anything. */
+  --bg: var(--nl-surface-editor, #1e1e1e);
+  --card: var(--nl-surface-card, #252526);
+  --border: var(--nl-border, #3a3a3d);
+  --text: var(--nl-text, #e6edf3);
+  --dim: var(--nl-text-dim, #b9bac5);
+  --subtle: var(--nl-text-subtle, #8b9198);
+  --accent: var(--nl-accent, #0e8bdf);
+  /* The label colour on the accent. White is wrong on the gold accent the
+     app's own theme uses. */
+  --on-accent: var(--nl-accent-ink, #fff);
+  --open: var(--nl-warning, #d8a13a);
+  /* Referenced by the name chips and never defined, so they were painting
+     themselves with the hardcoded fallback. */
+  --surface: var(--nl-surface-card, #2b2d31);
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body {
   display: flex; flex-direction: column;
-  font: 13px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--nl-font-family, system-ui, -apple-system, "Segoe UI", sans-serif);
+  font-size: var(--nl-font-ui, 13px);
+  line-height: 1.55;
   background: var(--bg); color: var(--text);
 }
 
@@ -45,8 +62,8 @@ button {
   background: var(--card); color: var(--dim); border: 1px solid var(--border);
 }
 button:hover { color: var(--text); border-color: var(--subtle); }
-button.tab.active { color: #fff; background: var(--accent); border-color: var(--accent); }
-button.primary { color: #fff; background: var(--accent); border-color: var(--accent); }
+button.tab.active { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+button.primary { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
 button:disabled { opacity: .5; cursor: default; }
 
 /* The clock is what you look at from across a desk, so it is the size of that. */
