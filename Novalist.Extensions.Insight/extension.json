@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "Novalist Team",
   "entryAssembly": "Novalist.Extensions.Insight.dll",
-  "minHostVersion": "2.5.0",
+  "minHostVersion": "3.0.0",
   "maxHostVersion": "",
   "dependencies": [],
   "tags": [

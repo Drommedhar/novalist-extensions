@@ -117,9 +117,33 @@ jobs:
 
           unzip -l "$ZIP"
 
+      # Novalist reads compatibility, the icon and the store page from the
+      # release rather than from the repository, because a repository holding
+      # four extensions has no single manifest or README at its root and the
+      # gallery has no business knowing the folder layout. The manifest here is
+      # the stamped one, so what the store checks is what the ZIP contains.
+      - name: Publish the manifest and the store page beside the ZIP
+        working-directory: novalist-extension
+        run: |
+          ID="${{ steps.which.outputs.id }}"
+          PROJECT="${{ steps.which.outputs.project }}"
+
+          cp "$PROJECT/extension.json" "${GITHUB_WORKSPACE}/${ID}.extension.json"
+
+          # Its own page when it has one; the repository's only as a fallback,
+          # which is at least accurate rather than absent.
+          if [ -f "$PROJECT/README.md" ]; then
+            cp "$PROJECT/README.md" "${GITHUB_WORKSPACE}/${ID}.README.md"
+          else
+            echo "::warning::$PROJECT has no README.md; the store will show the repository's."
+          fi
+
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
           name: "${{ steps.which.outputs.slug }} ${{ steps.which.outputs.version }}"
           generate_release_notes: true
-          files: ${{ steps.which.outputs.id }}.zip
+          files: |
+            ${{ steps.which.outputs.id }}.zip
+            ${{ steps.which.outputs.id }}.extension.json
+            ${{ steps.which.outputs.id }}.README.md
