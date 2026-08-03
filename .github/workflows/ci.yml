@@ -85,7 +85,12 @@ jobs:
             used=$(grep -rhoE "loc\.T\(\"$group\.[A-Za-z.]+\"\)" "$project" --include='*.cs' \
                    | sed -E "s/.*\"$group\.([A-Za-z.]+)\".*/\1/" | sort -u)
             for lang in en de; do
-              have=$(jq -r ".$group | keys[]" "$project/Locales/$lang.json" | sort -u)
+              # Every leaf, joined back into the dotted path the code asks for.
+              # keys[] returns only the names one level down, so a group with
+              # any nesting in it - publish.site.character - reported every one
+              # of its keys as missing while the extension worked perfectly.
+              have=$(jq -r ".$group | [paths(scalars)] | map(join(\".\")) | .[]" \
+                     "$project/Locales/$lang.json" | sort -u)
               missing=$(comm -23 <(echo "$used") <(echo "$have"))
               if [ -n "$missing" ]; then
                 echo "::error::$project $lang is missing: $(echo $missing)"
