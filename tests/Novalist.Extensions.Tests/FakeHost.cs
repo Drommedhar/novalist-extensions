@@ -131,7 +131,8 @@ public sealed class FakeHost : IHostServices, IExtensionProjectService, IExtensi
     public IExtensionEntityService EntityService => No<IExtensionEntityService>();
     public IExtensionResearchService ResearchService => No<IExtensionResearchService>();
     public IExtensionReviewService ReviewService => No<IExtensionReviewService>();
-    public string HostVersion => "2.3.0";
+    public IExtensionArchiveService ArchiveService => No<IExtensionArchiveService>();
+    public string HostVersion => "3.0.0";
     public string CurrentLanguage => "en";
     public string WritingLanguage { get; set; } = "en";
     public string CurrentLanguageDisplayName => "English";
@@ -141,9 +142,13 @@ public sealed class FakeHost : IHostServices, IExtensionProjectService, IExtensi
     string? IExtensionProjectService.WorldBibleRoot => "/project/WorldBible";
     bool IExtensionProjectService.IsProjectLoaded => true;
     SceneInfo? IExtensionProjectService.CurrentScene => null;
+    string? IExtensionProjectService.ActiveBookId => "book-one";
+    string? IExtensionProjectService.ActiveDraftId => "draft-one";
 
     Task<string> IExtensionProjectService.GetSceneSynopsisAsync(string c, string s) => No<Task<string>>();
     Task IExtensionProjectService.SetSceneSynopsisAsync(string c, string s, string y) => No<Task>();
+    Task<bool> IExtensionProjectService.IsSceneBusyAsync(string c, string s)
+        => Task.FromResult(false);
     Task<bool> IExtensionProjectService.RenameChapterAsync(string c, string t) => No<Task<bool>>();
     Task<bool> IExtensionProjectService.RenameSceneAsync(string c, string s, string t) => No<Task<bool>>();
     Task<bool> IExtensionProjectService.MoveSceneAsync(string s, string c, int i) => No<Task<bool>>();
@@ -151,11 +156,32 @@ public sealed class FakeHost : IHostServices, IExtensionProjectService, IExtensi
     Task<bool> IExtensionProjectService.SetChapterActAsync(string c, string a) => No<Task<bool>>();
     Task<bool> IExtensionProjectService.TrashChapterAsync(string c) => No<Task<bool>>();
     Task<bool> IExtensionProjectService.ArchiveSceneAsync(string c, string s) => No<Task<bool>>();
+    Task<string?> IExtensionProjectService.CreateProjectAsync(string p, string n, string b)
+        => No<Task<string?>>();
+    IReadOnlyList<BookInfo> IExtensionProjectService.GetBooks() => [];
+    Task<string> IExtensionProjectService.CreateBookAsync(string n) => No<Task<string>>();
+    Task<bool> IExtensionProjectService.RenameBookAsync(string b, string n) => No<Task<bool>>();
+    Task<bool> IExtensionProjectService.SwitchBookAsync(string b) => No<Task<bool>>();
+    IReadOnlyList<DraftInfo> IExtensionProjectService.GetDrafts() => [];
+    Task<string> IExtensionProjectService.CreateDraftAsync(string n, string? c)
+        => No<Task<string>>();
+    Task<bool> IExtensionProjectService.RenameDraftAsync(string d, string n) => No<Task<bool>>();
+    Task<bool> IExtensionProjectService.SwitchDraftAsync(string d) => No<Task<bool>>();
 
+    ChapterDetailInfo? IExtensionStoryService.GetChapterDetail(string c) => null;
+    Task<bool> IExtensionStoryService.SetChapterStatusAsync(string c, string s) => No<Task<bool>>();
+    Task<bool> IExtensionStoryService.SetSceneMetadataAsync(
+        string c, string s, SceneMetadataPatch p) => No<Task<bool>>();
     IReadOnlyList<ActInfo> IExtensionStoryService.GetActs() => [];
     IReadOnlyList<PlotlineInfo> IExtensionStoryService.GetPlotlines() => [];
     Task<string> IExtensionStoryService.CreatePlotlineAsync(string n, string c, string d) => No<Task<string>>();
     Task<bool> IExtensionStoryService.SetScenePlotlinesAsync(string c, string s, IReadOnlyList<string> p) => No<Task<bool>>();
+    string IExtensionStoryService.GetCellNote(string c, string s, string p) => string.Empty;
+    Task<bool> IExtensionStoryService.SetCellNoteAsync(string c, string s, string p, string n)
+        => No<Task<bool>>();
+    IReadOnlyList<SmartListInfo> IExtensionStoryService.GetSmartLists() => [];
+    Task<IReadOnlyList<MapInfo>> IExtensionStoryService.GetMapsAsync()
+        => Task.FromResult<IReadOnlyList<MapInfo>>([]);
     IReadOnlyList<TimelineEventInfo> IExtensionStoryService.GetTimelineEvents() => [];
     Task<string> IExtensionStoryService.SaveTimelineEventAsync(TimelineEventInfo e) => No<Task<string>>();
     Task<bool> IExtensionStoryService.DeleteTimelineEventAsync(string e) => No<Task<bool>>();
