@@ -1,0 +1,17 @@
+{
+  "speech.preparing": "Preparing the speech engine",
+  "speech.noPython": "No Python 3 was found. Novalist needs one to run the speech models — install it, then press Prepare again.",
+  "speech.installFailed": "The speech environment could not be built. What pip reported is in install-failed.txt, in this extension's folder under Novalist's application data.",
+  "speech.notReady": "The speech engine is not ready yet.",
+  "speech.step.starting": "Starting",
+  "speech.step.environment": "Building the Python environment",
+  "speech.step.downloading": "Downloading — this is the long part",
+  "speech.step.installed": "Environment ready",
+  "speech.step.loadingDelivery": "Loading the speech model",
+  "speech.step.loadingDesign": "Loading the voice designer",
+  "speech.step.ready": "Ready",
+  "speech.step.python": "Looking for Python",
+  "speech.step.installing": "Installing",
+  "speech.step.importing": "Starting Python and loading torch",
+  "speech.step.cuda": "Fetching the GPU build — this is the big one"
+}

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <ExtensionFolder>Speech</ExtensionFolder>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Novalist.Extensions.Tests" />
+  </ItemGroup>
+  <!--
+    The sidecar travels inside the assembly and is written out on first run.
+
+    Not as files beside the DLL, because an extension cannot reliably find where
+    it was installed: the host loads extension assemblies from a memory stream so
+    that no file lock is held, which leaves Assembly.Location empty and every
+    path built from it relative to whatever the working directory happens to be.
+    Embedded, there is nothing to locate.
+
+    It still lands on disk - in the extension's own settings folder - because it
+    has to be readable and patchable by whoever installs it. A writer whose card
+    needs a different torch build should not wait for us to publish a release.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="python\sidecar.py" LogicalName="sidecar.py" />
+    <EmbeddedResource Include="python\requirements.txt" LogicalName="requirements.txt" />
+  </ItemGroup>
+</Project>

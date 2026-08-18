@@ -1,0 +1,20 @@
+# What the sidecar needs.
+#
+# chatterbox-tts pulls its own torch, so torch is deliberately not pinned here:
+# the right build depends on the machine's CUDA, and pinning one would install a
+# CPU build on a card that can do better. A writer with a specific card edits
+# this file, which is why it ships as a file rather than as a list inside the
+# assembly.
+#
+# The engine clones a voice from a reference clip and takes an emotional
+# intensity per utterance, separately. Those are the two things the two-stage
+# design needs: one stored identity, performed differently every line.
+chatterbox-tts>=0.1.7
+numpy
+
+# setuptools 81 removed pkg_resources, and the watermarker chatterbox loads at
+# start-up still imports it. Without this pin the model downloads, the weights
+# load, and construction fails on the last line with "'NoneType' object is not
+# callable" - a failure that says nothing about the cause and arrives after
+# several gigabytes of waiting.
+setuptools<81

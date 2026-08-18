@@ -13,5 +13,6 @@
     <ProjectReference Include="..\..\Novalist.Extensions.Insight\Novalist.Extensions.Insight.csproj" />
     <ProjectReference Include="..\..\Novalist.Extensions.Toolkit\Novalist.Extensions.Toolkit.csproj" />
     <ProjectReference Include="..\..\Novalist.Extensions.Publish\Novalist.Extensions.Publish.csproj" />
+    <ProjectReference Include="..\..\Novalist.Extensions.Speech\Novalist.Extensions.Speech.csproj" />
   </ItemGroup>
 </Project>

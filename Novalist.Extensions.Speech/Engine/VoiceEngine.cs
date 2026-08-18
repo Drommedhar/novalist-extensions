@@ -1,0 +1,331 @@
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using Novalist.Sdk.Models.Narration;
+
+namespace Novalist.Extensions.Speech;
+
+/// <summary>
+/// The speech engine, minus the process.
+///
+/// Everything that decides anything is here and is tested against a fake
+/// channel: what is asked and in what order, what happens when a clip fails,
+/// what happens when the sidecar dies part way through a chapter, and what the
+/// host is told about all of it. Starting Python is somebody else's problem -
+/// <see cref="ProcessSidecarChannel"/>'s - because a test that needs a model on
+/// the machine is a test nobody runs.
+///
+/// The two stages the plan is built on are two different models behind one
+/// contributor: a design model that makes a voice from a description, and a
+/// delivery model that performs a line in that voice with the emotion supplied
+/// separately. The host never learns there are two.
+/// </summary>
+internal sealed class VoiceEngine : IDisposable
+{
+    private static readonly JsonSerializerOptions Json = new()
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+    };
+
+    private readonly Func<ISidecarChannel> _channels;
+    private readonly string _workingDirectory;
+    private ISidecarChannel? _channel;
+    private string _detail = string.Empty;
+    private string? _fault;
+
+    public VoiceEngine(Func<ISidecarChannel> channels, string workingDirectory)
+    {
+        _channels = channels;
+        _workingDirectory = workingDirectory;
+    }
+
+    /// <summary>True once the sidecar has answered that its models are loaded.</summary>
+    public bool IsReady { get; private set; }
+
+    /// <summary>What the sidecar says it is - the models and the device.</summary>
+    public string Detail => _detail;
+
+    /// <summary>Why it cannot run, when it cannot.</summary>
+    public string? Fault => _fault;
+
+    /// <summary>
+    /// Starts the sidecar and waits for it to say it is ready.
+    ///
+    /// The wait is the point: loading a speech model takes tens of seconds, and
+    /// a host that thought the engine was ready the moment the process existed
+    /// would send it a chapter and get nothing back.
+    /// </summary>
+    public async Task PrepareAsync(
+        IProgress<VoiceEnginePrepare>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        if (IsReady && _channel is { IsRunning: true })
+            return;
+
+        Stop();
+        _fault = null;
+        Directory.CreateDirectory(_workingDirectory);
+
+        var channel = _channels();
+        _channel = channel;
+        await channel.StartAsync(cancellationToken);
+        // No fraction: nobody knows how long starting Python and loading a
+        // speech model takes, and a bar reporting zero per cent is a bar that
+        // has stopped. A moving one says the true thing - something is
+        // happening and it is not measurable.
+        progress?.Report(new VoiceEnginePrepare { Step = "starting" });
+
+        await SendAsync(new SidecarRequest { Op = "status" }, cancellationToken);
+
+        while (await ReadAsync(cancellationToken) is { } reply)
+        {
+            switch (reply.Type)
+            {
+                case "progress":
+                    progress?.Report(new VoiceEnginePrepare
+                    {
+                        Step = reply.Step,
+                        Fraction = reply.Fraction,
+                        Detail = reply.Detail
+                    });
+                    continue;
+                case "ready":
+                    if (reply.Version != SidecarProtocol.Version)
+                    {
+                        _fault = "version";
+                        Stop();
+                        return;
+                    }
+                    IsReady = reply.Ready;
+                    _detail = reply.Detail;
+                    if (!reply.Ready)
+                        _fault = reply.Error ?? "not-ready";
+                    progress?.Report(new VoiceEnginePrepare { Step = "ready", Fraction = 1 });
+                    return;
+                case "error":
+                    _fault = reply.Error ?? "error";
+                    Stop();
+                    return;
+                default:
+                    continue;
+            }
+        }
+
+        // The output closed without an answer: the sidecar died on the way up,
+        // usually because Python or a dependency is not there.
+        _fault = "sidecar-exited";
+        Stop();
+    }
+
+    /// <summary>The engine's state, without starting anything.</summary>
+    public VoiceEngineStatus Status() => new()
+    {
+        IsReady = IsReady && _channel is { IsRunning: true },
+        Error = _fault,
+        Detail = _detail
+    };
+
+    /// <summary>
+    /// Designs a voice and returns the audio that is that voice from now on.
+    /// </summary>
+    public async Task<VoiceDesignResult> DesignAsync(
+        VoiceBrief brief, CancellationToken cancellationToken = default)
+    {
+        await EnsureReadyAsync(cancellationToken);
+
+        await SendAsync(new SidecarRequest
+        {
+            Op = "design",
+            VoiceId = brief.VoiceId,
+            Description = brief.Description,
+            SampleLines = [.. brief.SampleLines],
+            Language = brief.Language
+        }, cancellationToken);
+
+        while (await ReadAsync(cancellationToken) is { } reply)
+        {
+            if (reply.Type == "progress")
+                continue;
+            if (reply.Type == "error")
+                throw new InvalidOperationException(reply.Error ?? "design failed");
+            if (reply.Type != "designed" || reply.File == null)
+                continue;
+
+            var audio = await ReadClipAsync(reply.File, cancellationToken);
+            return new VoiceDesignResult
+            {
+                VoiceId = brief.VoiceId,
+                ReferenceAudio = audio,
+                AudioFormat = "wav",
+                SampleRate = reply.SampleRate,
+                ResolvedDescription = brief.Description
+            };
+        }
+
+        throw new InvalidOperationException("the speech sidecar stopped while designing");
+    }
+
+    /// <summary>
+    /// Speaks a run of the book, yielding each clip as it is finished.
+    ///
+    /// Yielded rather than collected, so the host can start playing the first
+    /// line while the rest is still being made. A segment the sidecar could not
+    /// speak comes back carrying its reason rather than being dropped: a reading
+    /// with a silent gap in it sounds like the feature is broken.
+    /// </summary>
+    public async IAsyncEnumerable<NarrationClip> RenderAsync(
+        NarrationRequest request,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await EnsureReadyAsync(cancellationToken);
+
+        // The reference audio goes to disk once per render rather than into the
+        // message. The sidecar is told where, not what.
+        var voices = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (voiceId, audio) in request.Voices)
+        {
+            var name = $"voice-{Sanitise(voiceId)}.wav";
+            await File.WriteAllBytesAsync(
+                Path.Combine(_workingDirectory, name), audio, cancellationToken);
+            voices[voiceId] = name;
+        }
+
+        await SendAsync(new SidecarRequest
+        {
+            Op = "render",
+            Language = request.Language,
+            Rate = request.Rate,
+            Voices = voices,
+            Segments = [.. request.Segments.Select(s => new SidecarSegment
+            {
+                Key = s.Key,
+                Text = s.Text,
+                VoiceId = s.VoiceId,
+                IsDialogue = s.IsDialogue,
+                Vector = new Dictionary<string, double>(s.Direction.Vector, StringComparer.Ordinal),
+                Instruction = s.Direction.Instruction,
+                Emotion = s.Direction.Key
+            })]
+        }, cancellationToken);
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var reply = await ReadAsync(cancellationToken);
+            if (reply == null)
+            {
+                // The sidecar died mid-chapter. The host stops at the last good
+                // clip; saying so beats the reading simply ending.
+                yield return new NarrationClip { Key = string.Empty, Error = "sidecar-exited" };
+                IsReady = false;
+                yield break;
+            }
+
+            if (reply.Type == "done")
+                yield break;
+            if (reply.Type == "progress")
+                continue;
+            if (reply.Type == "error")
+            {
+                yield return new NarrationClip { Key = reply.Key, Error = reply.Error ?? "render" };
+                continue;
+            }
+            if (reply.Type != "clip" || reply.File == null)
+                continue;
+
+            yield return new NarrationClip
+            {
+                Key = reply.Key,
+                Audio = await ReadClipAsync(reply.File, cancellationToken),
+                AudioFormat = "wav",
+                SampleRate = reply.SampleRate,
+                DurationMs = reply.DurationMs
+            };
+        }
+    }
+
+    /// <summary>Drops a voice's reference audio from the working directory.</summary>
+    public Task ForgetAsync(string voiceId, CancellationToken cancellationToken = default)
+    {
+        var path = Path.Combine(_workingDirectory, $"voice-{Sanitise(voiceId)}.wav");
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        return Task.CompletedTask;
+    }
+
+    public void Stop()
+    {
+        IsReady = false;
+        _channel?.Dispose();
+        _channel = null;
+    }
+
+    public void Dispose() => Stop();
+
+    private async Task EnsureReadyAsync(CancellationToken cancellationToken)
+    {
+        if (!IsReady || _channel is not { IsRunning: true })
+            await PrepareAsync(null, cancellationToken);
+        if (!IsReady)
+            throw new InvalidOperationException(_fault ?? "the speech engine is not ready");
+    }
+
+    private async Task SendAsync(SidecarRequest request, CancellationToken cancellationToken)
+    {
+        if (_channel == null)
+            throw new InvalidOperationException("the speech engine is not running");
+        await _channel.SendAsync(JsonSerializer.Serialize(request, Json), cancellationToken);
+    }
+
+    private async Task<SidecarReply?> ReadAsync(CancellationToken cancellationToken)
+    {
+        while (_channel != null)
+        {
+            var line = await _channel.ReadAsync(cancellationToken);
+            if (line == null)
+                return null;
+            if (line.Length == 0 || line[0] != '{')
+                continue;
+
+            SidecarReply? reply;
+            try
+            {
+                reply = JsonSerializer.Deserialize<SidecarReply>(line, Json);
+            }
+            catch (JsonException)
+            {
+                // A model that printed to stdout rather than stderr. Skipped
+                // rather than fatal: it is noise, not an answer.
+                continue;
+            }
+            if (reply != null)
+                return reply;
+        }
+        return null;
+    }
+
+    /// <summary>The bytes of a clip the sidecar wrote, then the file is gone -
+    /// the host has its own cache and this directory is scratch.</summary>
+    private async Task<byte[]> ReadClipAsync(string file, CancellationToken cancellationToken)
+    {
+        var path = Path.Combine(_workingDirectory, Path.GetFileName(file));
+        var bytes = await File.ReadAllBytesAsync(path, cancellationToken);
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        return bytes;
+    }
+
+    /// <summary>A voice id as a file name. Ids are host-made, but a file name
+    /// built from something another component chose is worth checking.</summary>
+    private static string Sanitise(string voiceId)
+        => new([.. voiceId.Select(c => char.IsLetterOrDigit(c) || c == '-' ? c : '_')]);
+}

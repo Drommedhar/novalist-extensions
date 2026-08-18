@@ -86,6 +86,13 @@ public sealed class FakeHost : IHostServices, IExtensionProjectService, IExtensi
             })];
     }
 
+    /// <summary>The book, as the host now reports it. Whatever a test sets here
+    /// is what an extension reading the book's own declarations sees - the
+    /// narrator's brief is built from exactly these.</summary>
+    public BookDetailInfo Book { get; set; } = new();
+
+    BookDetailInfo? IExtensionStoryService.GetBookDetail() => Book;
+
     SceneDetailInfo? IExtensionStoryService.GetSceneDetail(string chapterGuid, string sceneId)
     {
         var chapter = Chapters.FirstOrDefault(c => c.Guid == chapterGuid);
