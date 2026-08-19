@@ -22,7 +22,7 @@ internal static class SidecarProtocol
     /// <summary>Bump when the message shape changes. The sidecar reports the
     /// version it speaks in its ready line, and a mismatch is a clear failure
     /// rather than a field silently missing.</summary>
-    public const int Version = 1;
+    public const int Version = 2;
 }
 
 /// <summary>A request to the sidecar.</summary>
@@ -58,6 +58,11 @@ internal sealed class SidecarRequest
     /// that can use them.</summary>
     [JsonPropertyName("sampleLines")]
     public string[]? SampleLines { get; init; }
+
+    /// <summary>The number to draw a designed voice with, or null to draw a
+    /// fresh one. Pinned by the writer when they want a voice back.</summary>
+    [JsonPropertyName("seed")]
+    public int? Seed { get; init; }
 
     [JsonPropertyName("language")]
     public string? Language { get; init; }
@@ -102,6 +107,18 @@ internal sealed class SidecarSegment
     /// that takes a label.</summary>
     [JsonPropertyName("emotion")]
     public string Emotion { get; init; } = "neutral";
+
+    /// <summary>
+    /// A clip the writer pointed at and said "like that", by file name in the
+    /// working directory. Null on almost every line.
+    ///
+    /// A cloning model takes its whole delivery from its reference - the timbre
+    /// and the prosody together - so a line already performed the way the writer
+    /// wanted is a more exact direction than any word for it. It is the
+    /// character's own clip, so the identity does not move.
+    /// </summary>
+    [JsonPropertyName("likeThis")]
+    public string? LikeThis { get; init; }
 }
 
 /// <summary>One line back from the sidecar.</summary>
@@ -122,8 +139,8 @@ internal sealed class SidecarReply
     [JsonPropertyName("ready")]
     public bool Ready { get; init; }
 
-    /// <summary>What it is and where it runs - "IndexTTS-2 on cuda:0". Shown in
-    /// settings and written to the log.</summary>
+    /// <summary>What it is and where it runs - "openbmb/VoxCPM2 on cuda". Shown
+    /// in settings and written to the log.</summary>
     [JsonPropertyName("detail")]
     public string Detail { get; init; } = string.Empty;
 
@@ -137,6 +154,11 @@ internal sealed class SidecarReply
 
     [JsonPropertyName("sampleRate")]
     public int SampleRate { get; init; }
+
+    /// <summary>The seed a designed voice was actually drawn with, so a writer
+    /// who likes it can ask for it again.</summary>
+    [JsonPropertyName("seed")]
+    public int? Seed { get; init; }
 
     [JsonPropertyName("durationMs")]
     public double DurationMs { get; init; }

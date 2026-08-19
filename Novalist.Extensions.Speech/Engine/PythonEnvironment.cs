@@ -21,13 +21,13 @@ internal sealed class PythonEnvironment
     /// <summary>
     /// The newest Python worth asking for.
     ///
-    /// Not a hard limit - the stack does publish wheels for newer ones - but the
-    /// newest release is reliably the one some dependency has not caught up with
-    /// yet, and the machine that has it usually has a settled version too.
-    /// Preferring the settled one costs nothing and avoids a class of install
-    /// failure the writer can do nothing about.
+    /// A real ceiling rather than a preference: the speech model states Python
+    /// 3.10 to 3.12, and 3.13 has no wheel for it. The old value here was 13,
+    /// which on a machine with a current Python picked exactly the interpreter
+    /// the install then failed on - and failed with a wall of pip output rather
+    /// than with the one sentence that would have explained it.
     /// </summary>
-    private const int NewestSupportedMinor = 13;
+    private const int NewestSupportedMinor = 12;
 
     /// <summary>The oldest worth trying.</summary>
     private const int OldestSupportedMinor = 10;
@@ -81,10 +81,62 @@ internal sealed class PythonEnvironment
     /// cache, and this is emptied whenever the engine restarts.</summary>
     public string WorkPath => Path.Combine(_root, "work");
 
-    /// <summary>True once the environment exists and has been populated.</summary>
-    public bool IsBuilt => File.Exists(VenvPython) && File.Exists(Marker);
+    /// <summary>
+    /// True once the environment exists and holds <em>these</em> requirements.
+    ///
+    /// The recipe, not merely the fact that something was once installed. The
+    /// marker used to be a timestamp, so an environment built for an older
+    /// release counted as built for ever - and a version that changed the
+    /// packages shipped a sidecar importing something the environment did not
+    /// have. The writer saw an import error and no way to reach the install that
+    /// would have fixed it, because as far as this was concerned there was
+    /// nothing left to do.
+    /// </summary>
+    public bool IsBuiltFor(string requirements)
+    {
+        var recipe = Recipe(requirements);
+        // No readable recipe is not a match with a blank marker - it is a
+        // question that cannot be answered, and answering "already built" to it
+        // is how an environment nobody can fix gets one.
+        return recipe.Length > 0 && File.Exists(VenvPython) && ReadMarker() == recipe;
+    }
 
     private string Marker => Path.Combine(_root, "installed.txt");
+
+    /// <summary>What the marker says was installed, or empty when nothing has
+    /// been - including when it cannot be read, which comes to the same thing
+    /// for anybody waiting on a working environment.</summary>
+    private string ReadMarker()
+    {
+        try
+        {
+            return File.Exists(Marker) ? File.ReadAllText(Marker).Trim() : string.Empty;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// A fingerprint of the requirements file, so a release that changes the
+    /// packages rebuilds rather than running against the last one's.
+    ///
+    /// Of the file's own contents, so somebody who edited theirs for their own
+    /// card keeps their environment until they change it again.
+    /// </summary>
+    private static string Recipe(string requirements)
+    {
+        try
+        {
+            return Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(requirements)));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return string.Empty;
+        }
+    }
 
     /// <summary>What the last attempt actually went wrong with, for the writer
     /// and for whoever they show it to. Kept beside the environment rather than
@@ -109,8 +161,6 @@ internal sealed class PythonEnvironment
         // changed since it opened reads as one that never will.
         progress?.Report(("looking-for-python", null, string.Empty));
         var python = await FindPythonAsync(cancellationToken);
-        if (python == null)
-            return "no-python";
 
         Directory.CreateDirectory(_root);
         Directory.CreateDirectory(WorkPath);
@@ -120,7 +170,13 @@ internal sealed class PythonEnvironment
         // then failed on, and every attempt afterwards reused it and failed the
         // same way - the writer pressing Prepare again could not get out of it,
         // because the thing that was wrong was the part being kept.
-        if (File.Exists(VenvPython) && !IsBuilt)
+        //
+        // An environment built for a different recipe goes the same way, and for
+        // a sharper reason: installing this release's packages on top of the
+        // last one's leaves both, with two sets of pins arguing about which
+        // torch is installed. The weights are not in here - they live in the
+        // model cache and are kept - so what this costs is the wheels.
+        if (File.Exists(VenvPython) && !IsBuiltFor(requirements))
         {
             progress?.Report(("creating-environment", null, string.Empty));
             Discard(VenvPath);
@@ -129,12 +185,16 @@ internal sealed class PythonEnvironment
         if (!File.Exists(VenvPython))
         {
             progress?.Report(("creating-environment", null, string.Empty));
-            var (code, _, error) = await RunAsync(
-                python.Value.Executable,
-                [.. python.Value.Prefix, "-m", "venv", VenvPath],
-                cancellationToken);
-            if (code != 0)
-                return "venv-failed: " + Short(error);
+            // The machine's own Python where it has a usable one, and an
+            // interpreter fetched for the purpose where it does not. The second
+            // half is what turns "install Python 3.12 and try again" - which is
+            // homework, not an installer - into a download the writer has
+            // already agreed to.
+            var failure = python == null
+                ? await new PortablePython(_root).BuildVenvAsync(VenvPath, progress, cancellationToken)
+                : await SystemVenvAsync(python.Value, cancellationToken);
+            if (failure != null)
+                return failure;
         }
 
         // The long one - a couple of gigabytes of wheels. pip's own output is
@@ -201,9 +261,21 @@ internal sealed class PythonEnvironment
         }
 
         Discard(FailurePath);
-        await File.WriteAllTextAsync(Marker, DateTime.UtcNow.ToString("O"), cancellationToken);
+        await File.WriteAllTextAsync(Marker, Recipe(requirements), cancellationToken);
         progress?.Report(("installed", null, string.Empty));
         return null;
+    }
+
+    /// <summary>A virtual environment on an interpreter the machine already
+    /// had. Null on success, a fault code otherwise.</summary>
+    private async Task<string?> SystemVenvAsync(
+        (string Executable, string[] Prefix) python, CancellationToken cancellationToken)
+    {
+        var (code, _, error) = await RunAsync(
+            python.Executable,
+            [.. python.Prefix, "-m", "venv", VenvPath],
+            cancellationToken);
+        return code == 0 ? null : "venv-failed: " + Short(error);
     }
 
     /// <summary>
@@ -215,8 +287,14 @@ internal sealed class PythonEnvironment
     /// builds from an index this new carry kernels for them. An older one
     /// installs happily and then fails at the first matrix multiply with "no
     /// kernel image is available for execution on the device".
+    ///
+    /// It also has to be an index somebody is still publishing to. The previous
+    /// value, cu128, stopped at torch 2.9.1 for Windows while the current
+    /// indexes carry 2.13 - so "upgrade torch from this index" quietly moved
+    /// torch *backwards* off whatever the model had installed, and reported
+    /// success. Checked against the live index before it is used.
     /// </summary>
-    private const string CudaIndex = "https://download.pytorch.org/whl/cu128";
+    private const string CudaIndex = "https://download.pytorch.org/whl/cu130";
 
     /// <summary>Whether this machine has an NVIDIA card worth fetching a CUDA
     /// build for. Asked of the driver rather than inferred from the platform.</summary>
@@ -234,31 +312,29 @@ internal sealed class PythonEnvironment
     internal async Task<(string Executable, string[] Prefix)?> FindPythonAsync(
         CancellationToken cancellationToken)
     {
-        (string Executable, string[] Prefix)? fallback = null;
-
         foreach (var (executable, prefix) in Candidates())
         {
             var (code, output, _) = await RunAsync(
                 executable, [.. prefix, "--version"], cancellationToken);
-            if (code != 0)
-                continue;
-            if (IsUsable(output))
+            if (code == 0 && IsUsable(output))
                 return (executable, prefix);
-            fallback ??= (executable, prefix);
         }
-        // Nothing in the preferred range, but something answered: use it. The
-        // install will say so itself if a dependency has no build for it, which
-        // is a better answer than refusing to try.
-        return fallback;
+        // Nothing in the range. This used to fall back to whatever answered, and
+        // the install then failed minutes later with a wall of pip output about
+        // a wheel that does not exist for it. Now there is a real alternative -
+        // an interpreter fetched for the purpose - and taking it beats spending
+        // a two-gigabyte download to find out this one will not do.
+        return null;
     }
 
     /// <summary>
-    /// Whether a `--version` line names a Python in the preferred range.
+    /// Whether a `--version` line names a Python the speech stack can install
+    /// into.
     ///
-    /// A preference, not a rule: one outside it is still tried if nothing else
-    /// answers. The point is to reach for the settled version on a machine that
-    /// has both, because the newest is the one a dependency is most likely to be
-    /// behind on.
+    /// A rule rather than a preference, now that an interpreter can be fetched
+    /// for a machine that has nothing suitable. The model publishes no wheel
+    /// above 3.12, and an interpreter outside the range builds a virtual
+    /// environment happily and then fails the install minutes later.
     /// </summary>
     internal static bool IsUsable(string versionOutput)
     {

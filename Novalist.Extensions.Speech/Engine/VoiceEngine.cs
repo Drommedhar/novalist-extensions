@@ -181,7 +181,8 @@ internal sealed class VoiceEngine : IDisposable
             VoiceId = brief.VoiceId,
             Description = brief.Description,
             SampleLines = [.. brief.SampleLines],
-            Language = brief.Language
+            Language = brief.Language,
+            Seed = brief.Seed
         }, cancellationToken);
 
         while (await ReadForAsync(id, cancellationToken) is { } reply)
@@ -200,7 +201,8 @@ internal sealed class VoiceEngine : IDisposable
                 ReferenceAudio = audio,
                 AudioFormat = "wav",
                 SampleRate = reply.SampleRate,
-                ResolvedDescription = brief.Description
+                ResolvedDescription = brief.Description,
+                Seed = reply.Seed
             };
         }
 
@@ -236,6 +238,24 @@ internal sealed class VoiceEngine : IDisposable
             voices[voiceId] = name;
         }
 
+        // The clips the writer pointed at and said "like that". Written once
+        // each however many lines share one, and to a name derived from the
+        // audio rather than from the segment - two lines told to sound like the
+        // same clip are the same file.
+        var like = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var segment in request.Segments)
+        {
+            if (segment.Direction.ReferenceAudio is not { Length: > 0 } audio)
+                continue;
+            var name = "like-" + Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(audio))[..16] + ".wav";
+            if (!like.ContainsKey(segment.Key))
+                like[segment.Key] = name;
+            var path = Path.Combine(_workingDirectory, name);
+            if (!File.Exists(path))
+                await File.WriteAllBytesAsync(path, audio, cancellationToken);
+        }
+
         var id = NextId();
         await SendAsync(new SidecarRequest
         {
@@ -252,7 +272,8 @@ internal sealed class VoiceEngine : IDisposable
                 IsDialogue = s.IsDialogue,
                 Vector = new Dictionary<string, double>(s.Direction.Vector, StringComparer.Ordinal),
                 Instruction = s.Direction.Instruction,
-                Emotion = s.Direction.Key
+                Emotion = s.Direction.Key,
+                LikeThis = like.GetValueOrDefault(s.Key)
             })]
         }, cancellationToken);
 
@@ -291,7 +312,13 @@ internal sealed class VoiceEngine : IDisposable
         }
     }
 
-    /// <summary>Drops a voice's reference audio from the working directory.</summary>
+    /// <summary>
+    /// Drops a voice's reference audio from the working directory.
+    ///
+    /// Nothing to tell the sidecar. It holds no state about a voice between
+    /// calls - the reference clip is handed to it with every render - so there
+    /// is nothing there to go stale.
+    /// </summary>
     public Task ForgetAsync(string voiceId, CancellationToken cancellationToken = default)
     {
         var path = Path.Combine(_workingDirectory, $"voice-{Sanitise(voiceId)}.wav");

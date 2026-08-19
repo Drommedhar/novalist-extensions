@@ -3,3 +3,8 @@ obj/
 *.user
 artifacts/
 TestResults/
+
+# Python bytecode from the speech sidecar. It was committed once and then
+# changed on every edit to the source beside it.
+__pycache__/
+*.pyc

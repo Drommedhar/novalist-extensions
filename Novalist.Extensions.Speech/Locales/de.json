@@ -1,14 +1,13 @@
 {
   "speech.preparing": "Sprach-Engine wird vorbereitet",
-  "speech.noPython": "Es wurde kein Python 3 gefunden. Novalist benötigt es für die Sprachmodelle — installiere es und drücke erneut auf Vorbereiten.",
+  "speech.noPython": "Es konnte kein Python für die Sprachmodelle gefunden oder heruntergeladen werden. Prüfen Sie die Verbindung und drücken Sie erneut auf Vorbereiten.",
   "speech.installFailed": "Die Sprachumgebung konnte nicht eingerichtet werden. Was pip gemeldet hat, steht in install-failed.txt im Ordner dieser Erweiterung in Novalists Anwendungsdaten.",
   "speech.notReady": "Die Sprach-Engine ist noch nicht bereit.",
   "speech.step.starting": "Wird gestartet",
   "speech.step.environment": "Python-Umgebung wird eingerichtet",
   "speech.step.downloading": "Wird heruntergeladen — das dauert am längsten",
   "speech.step.installed": "Umgebung bereit",
-  "speech.step.loadingDelivery": "Sprachmodell wird geladen",
-  "speech.step.loadingDesign": "Stimmen-Designer wird geladen",
+  "speech.step.loadingModel": "Sprachmodell wird geladen",
   "speech.step.ready": "Bereit",
   "speech.step.python": "Python wird gesucht",
   "speech.step.installing": "Wird installiert",
@@ -16,5 +15,7 @@
   "speech.step.cuda": "GPU-Build wird geladen — der größte Teil",
   "speech": {
     "noAnswer": "Die Sprachausgabe wurde gestartet, hat aber nie geantwortet. Schließen Sie Novalist und bereiten Sie sie erneut vor; falls das weiterhin auftritt, löschen Sie den Ordner der Erweiterung in Ihren Anwendungsdaten, damit sie neu aufgebaut wird."
-  }
+  },
+  "speech.step.fetchingPython": "Ein Python für die Sprachmodelle wird geholt",
+  "speech.pythonFetchFailed": "Ein Python für die Sprachmodelle konnte nicht heruntergeladen werden. Prüfen Sie die Verbindung und drücken Sie erneut auf Vorbereiten."
 }

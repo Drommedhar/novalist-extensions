@@ -14,18 +14,24 @@ namespace Novalist.Extensions.Speech;
 /// why it is an extension: a writer who wants none of this installs none of it,
 /// and the application itself carries no speech dependency at all.
 ///
-/// Two models behind one contributor, and keeping them apart is the whole point:
+/// Two stages behind one contributor, and keeping them apart is the whole point:
 ///
 /// <list type="bullet">
-/// <item>a <b>design</b> model turns a description of a character into a voice,
-/// once, and what comes back is stored as audio because designing is not
+/// <item><b>design</b> turns a description of a character into a voice, once,
+/// and what comes back is stored as audio because designing is not
 /// reproducible;</item>
-/// <item>a <b>delivery</b> model performs each line in that fixed voice, with
-/// the emotion supplied per line as a parameter beside the words.</item>
+/// <item><b>delivery</b> performs each line in that fixed voice, with the
+/// emotion supplied per line as a parameter beside the words.</item>
 /// </list>
 ///
 /// A character is therefore one identity and many performances - furious in
 /// chapter three, grieving in chapter twenty, recognisably the same person.
+///
+/// Two stages, but <b>one model</b>. They were two, and that was the mistake:
+/// our pipeline designs a clip and then clones it for ever, so when the designer
+/// and the cloner are different models the timbre that was approved is not the
+/// timbre that comes back. No benchmark measures that seam, because no other
+/// pipeline has it. A model that does both has no seam to lose anything in.
 ///
 /// <b>Nothing here opens a socket.</b> The models run on this machine, in a
 /// Python environment under the extension's own settings folder, and the only
@@ -85,22 +91,44 @@ public sealed class SpeechExtension : IExtension, IVoiceEngineContributor, IDisp
     /// <summary>
     /// What this can be asked for.
     ///
-    /// Both kinds of direction, because the delivery model takes an emotion
-    /// vector and can also be given the sentence - and the host sends whichever
-    /// it is told to. Not <c>EmotionInferred</c>: this engine performs what it
-    /// is directed to perform rather than deciding for itself, which is the
-    /// point of the writer being able to overrule a line.
+    /// <c>EmotionVector</c> and nothing else of the three, and both omissions
+    /// are deliberate corrections rather than gaps:
     ///
-    /// No <c>CloneFromSample</c>: there is no recording to clone from, and an
-    /// engine that accepted a call it cannot honour is worse than one that says
-    /// so. That is also what keeps a real person's voice out of this entirely.
+    /// <list type="bullet">
+    /// <item>Not <c>EmotionInstruction</c>. The model's direction slot is a
+    /// phrase in front of the words, so anything put there is one bad prompt
+    /// away from being read aloud. The adapter builds that phrase itself from a
+    /// closed vocabulary; a sentence assembled from the writer's own prose must
+    /// never reach it, so it is better not to be sent one. It was advertised,
+    /// built, sent and silently discarded, which cost the host the work of
+    /// composing it every line.</item>
+    /// <item>Not <c>ContinuousContext</c>. Each segment is a separate call with
+    /// nothing carried across, so identity and prosody do not survive a join.
+    /// Claiming otherwise told the host to skip the fade that removes the click
+    /// at every one of them - a promise that made exported chapters worse and
+    /// nothing better.</item>
+    /// <item><c>EmotionReference</c>, which this model is unusually well suited
+    /// to: it clones its whole delivery from a reference clip - the timbre and
+    /// the prosody together - so a line the writer has already heard performed
+    /// the way they wanted is a more exact direction than any word for it. The
+    /// host only ever offers clips in the same character's voice, so the
+    /// identity does not move when the delivery does. The host had built this
+    /// whole path and no engine claimed it, which meant a writer could pick a
+    /// line, press apply, and hear no difference at all.</item>
+    /// <item>Not <c>EmotionInferred</c>: this performs what it is directed to
+    /// perform rather than deciding for itself, which is the point of the writer
+    /// being able to overrule a line.</item>
+    /// <item>No <c>CloneFromSample</c>: there is no recording to clone from, and
+    /// an engine that accepted a call it cannot honour is worse than one that
+    /// says so. That is also what keeps a real person's voice out of this
+    /// entirely.</item>
+    /// </list>
     /// </summary>
     public VoiceEngineFeatures Features =>
         VoiceEngineFeatures.DesignFromDescription
         | VoiceEngineFeatures.EmotionVector
-        | VoiceEngineFeatures.EmotionInstruction
+        | VoiceEngineFeatures.EmotionReference
         | VoiceEngineFeatures.Streaming
-        | VoiceEngineFeatures.ContinuousContext
         | VoiceEngineFeatures.RunsOnCpu;
 
     public Task<VoiceEngineStatus> GetStatusAsync(CancellationToken cancellationToken = default)
@@ -123,7 +151,9 @@ public sealed class SpeechExtension : IExtension, IVoiceEngineContributor, IDisp
             // came to be left out of a list it belonged in.
             Error = NullIfBlank(Explain(_fault ?? status.Error)),
             Detail = status.Detail,
-            DownloadBytes = _python.IsBuilt ? null : ApproximateDownloadBytes
+            DownloadBytes = _python.IsBuiltFor(RequirementsPath())
+                ? null
+                : ApproximateDownloadBytes
         });
     }
 
@@ -184,7 +214,7 @@ public sealed class SpeechExtension : IExtension, IVoiceEngineContributor, IDisp
         _fault = null;
         try
         {
-            if (!_python.IsBuilt)
+            if (!_python.IsBuiltFor(RequirementsPath()))
             {
                 var failure = await _python.BuildAsync(
                     RequirementsPath(),
@@ -250,14 +280,14 @@ public sealed class SpeechExtension : IExtension, IVoiceEngineContributor, IDisp
     {
         "starting" => T("speech.step.starting", step),
         "looking-for-python" => T("speech.step.python", step),
+        "fetching-python" => T("speech.step.fetchingPython", step),
         "creating-environment" => T("speech.step.environment", step),
         "downloading" => T("speech.step.downloading", step),
         "downloading-cuda" => T("speech.step.cuda", step),
         "installing" => T("speech.step.installing", step),
         "installed" => T("speech.step.installed", step),
         "importing" => T("speech.step.importing", step),
-        "loading-delivery" => T("speech.step.loadingDelivery", step),
-        "loading-design" => T("speech.step.loadingDesign", step),
+        "loading-model" => T("speech.step.loadingModel", step),
         "ready" => T("speech.step.ready", step),
         _ => step
     };
@@ -274,6 +304,8 @@ public sealed class SpeechExtension : IExtension, IVoiceEngineContributor, IDisp
     {
         null => string.Empty,
         "no-python" => T("speech.noPython", fault),
+        _ when fault.StartsWith("python-fetch-failed", StringComparison.Ordinal)
+            => T("speech.pythonFetchFailed", fault),
         "sidecar-exited" or "version" => T("speech.notReady", fault),
         "no-answer" => T("speech.noAnswer", fault),
         _ when fault.StartsWith("venv-failed", StringComparison.Ordinal)
@@ -305,12 +337,12 @@ public sealed class SpeechExtension : IExtension, IVoiceEngineContributor, IDisp
         => Engine().ForgetAsync(voiceId, cancellationToken);
 
     /// <summary>
-    /// Roughly what pressing Prepare will fetch, so the number is on screen
-    /// before the wait rather than during it. Approximate on purpose: the exact
-    /// figure depends on the machine's CUDA build, and a precise-looking number
-    /// that is wrong is worse than an honest estimate.
+    /// Roughly what getting ready will fetch, so the number is on screen before
+    /// the wait rather than during it. Approximate on purpose: the exact figure
+    /// depends on the machine's CUDA build, and a precise-looking number that is
+    /// wrong is worse than an honest estimate.
     /// </summary>
-    private const long ApproximateDownloadBytes = 10L * 1024 * 1024 * 1024;
+    private const long ApproximateDownloadBytes = 8L * 1024 * 1024 * 1024;
 
     private VoiceEngine Engine()
         => _engine ?? throw new InvalidOperationException("the speech extension is not initialised");

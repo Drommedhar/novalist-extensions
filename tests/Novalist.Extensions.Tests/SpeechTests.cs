@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Novalist.Extensions.Speech;
 using Novalist.Sdk.Models.Narration;
@@ -95,13 +96,17 @@ public sealed class SpeechTests : IDisposable
         public void Dispose() => Stop();
     }
 
+    /// <summary>The protocol the sidecar that ships speaks. A reply carrying
+    /// any other number is a stale sidecar and is refused rather than used.</summary>
+    private const int SidecarProtocolVersion = 2;
+
     private VoiceEngine Engine(params string[] replies)
         => new(() => new FakeChannel(replies), _work);
 
     private VoiceEngine Engine(FakeChannel channel) => new(() => channel, _work);
 
-    private static string Ready(bool ready = true, int version = 1) => JsonSerializer.Serialize(
-        new { type = "ready", version, ready, detail = "IndexTTS-2 on cuda:0" });
+    private static string Ready(bool ready = true, int version = SidecarProtocolVersion) => JsonSerializer.Serialize(
+        new { type = "ready", version, ready, detail = "openbmb/VoxCPM2 on cuda" });
 
     /// <summary>Writes a clip where the sidecar would have, and names it.</summary>
     private string Clip(string name, string key, double durationMs = 250)
@@ -119,15 +124,15 @@ public sealed class SpeechTests : IDisposable
         // The wait is the point: a host that thought the engine was ready the
         // moment the process existed would send it a chapter and get nothing.
         var engine = Engine(
-            JsonSerializer.Serialize(new { type = "progress", step = "loading-delivery", fraction = 0.7 }),
+            JsonSerializer.Serialize(new { type = "progress", step = "loading-model", fraction = 0.7 }),
             Ready());
         var steps = new List<string>();
 
         await engine.PrepareAsync(new Progress<VoiceEnginePrepare>(p => steps.Add(p.Step)));
 
         Assert.True(engine.IsReady);
-        Assert.Equal("IndexTTS-2 on cuda:0", engine.Detail);
-        Assert.Contains("loading-delivery", steps);
+        Assert.Equal("openbmb/VoxCPM2 on cuda", engine.Detail);
+        Assert.Contains("loading-model", steps);
         Assert.Contains("ready", steps);
     }
 
@@ -187,7 +192,7 @@ public sealed class SpeechTests : IDisposable
         var status = engine.Status();
 
         Assert.True(status.IsReady);
-        Assert.Equal("IndexTTS-2 on cuda:0", status.Detail);
+        Assert.Equal("openbmb/VoxCPM2 on cuda", status.Detail);
         Assert.Null(status.Error);
     }
 
@@ -294,6 +299,59 @@ public sealed class SpeechTests : IDisposable
         Assert.Equal(
             "voice-mira-voice.wav",
             asked.GetProperty("voices").GetProperty("mira-voice").GetString());
+    }
+
+    [Fact]
+    public async Task Render_WritesTheClipTheWriterPointedAtAndNamesItBesideTheLine()
+    {
+        // "Like that line" was a dropdown, a store and an RPC that reached no
+        // engine: the writer picked a delivery, pressed apply, and heard exactly
+        // what they heard before, with nothing anywhere saying why.
+        var channel = new FakeChannel([Ready(), JsonSerializer.Serialize(new { type = "done" })]);
+        var engine = Engine(channel);
+        await engine.PrepareAsync(null);
+
+        await foreach (var _ in engine.RenderAsync(Request(like: [4, 5, 6]))) { }
+
+        var asked = JsonDocument.Parse(channel.Sent.Last()).RootElement;
+        var named = asked.GetProperty("segments")[0].GetProperty("likeThis").GetString();
+        Assert.NotNull(named);
+        Assert.True(File.Exists(Path.Combine(_work, named!)));
+        Assert.Equal(new byte[] { 4, 5, 6 }, File.ReadAllBytes(Path.Combine(_work, named!)));
+    }
+
+    [Fact]
+    public async Task Render_ALineWithNothingToSoundLikeCarriesNoClipAtAll()
+    {
+        // Which is almost every line. A name here would send the sidecar looking
+        // for a file that was never written.
+        var channel = new FakeChannel([Ready(), JsonSerializer.Serialize(new { type = "done" })]);
+        var engine = Engine(channel);
+        await engine.PrepareAsync(null);
+
+        await foreach (var _ in engine.RenderAsync(Request())) { }
+
+        var segment = JsonDocument.Parse(channel.Sent.Last()).RootElement
+            .GetProperty("segments")[0];
+        Assert.False(segment.TryGetProperty("likeThis", out var named) && named.ValueKind != JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task Render_TwoLinesToldToSoundLikeTheSameClipShareOneFile()
+    {
+        // Named by the audio rather than by the line, so directing a whole
+        // argument "like that" writes one file instead of thirty copies of it.
+        var channel = new FakeChannel([Ready(), JsonSerializer.Serialize(new { type = "done" })]);
+        var engine = Engine(channel);
+        await engine.PrepareAsync(null);
+
+        await foreach (var _ in engine.RenderAsync(Request(like: [4, 5, 6], lines: 2))) { }
+
+        var segments = JsonDocument.Parse(channel.Sent.Last()).RootElement.GetProperty("segments");
+        Assert.Equal(
+            segments[0].GetProperty("likeThis").GetString(),
+            segments[1].GetProperty("likeThis").GetString());
+        Assert.Single(Directory.GetFiles(_work, "like-*.wav"));
     }
 
     [Fact]
@@ -413,6 +471,70 @@ public sealed class SpeechTests : IDisposable
     // ── What the extension itself advertises ──
 
     [Fact]
+    public void TheEnvironment_IsRebuiltWhenTheRecipeChanges()
+    {
+        // A release that changes the packages used to count as already
+        // installed, because the marker recorded only that something once had
+        // been. So the new sidecar ran against the old environment and failed on
+        // an import the writer could do nothing about: as far as the extension
+        // was concerned there was nothing left to install.
+        var root = Path.Combine(_work, "env");
+        var requirements = Path.Combine(_work, "requirements.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(
+            Path.Combine(root, OperatingSystem.IsWindows() ? "Scripts" : "bin", "x"))!);
+        File.WriteAllText(Path.Combine(root, "installed.txt"), "whatever was there before");
+        File.WriteAllText(requirements, "chatterbox-tts>=0.1.7\n");
+
+        var python = new PythonEnvironment(root);
+        // Pretend the interpreter is there; what is being tested is the verdict,
+        // not the venv.
+        var interpreter = python.VenvPython;
+        Directory.CreateDirectory(Path.GetDirectoryName(interpreter)!);
+        File.WriteAllText(interpreter, string.Empty);
+
+        Assert.False(python.IsBuiltFor(requirements));
+    }
+
+    [Fact]
+    public void TheEnvironment_IsLeftAloneWhenTheRecipeHasNotChanged()
+    {
+        var root = Path.Combine(_work, "env2");
+        var requirements = Path.Combine(_work, "requirements2.txt");
+        Directory.CreateDirectory(root);
+        File.WriteAllText(requirements, "voxcpm>=2.0\nnumpy\n");
+
+        var python = new PythonEnvironment(root);
+        var interpreter = python.VenvPython;
+        Directory.CreateDirectory(Path.GetDirectoryName(interpreter)!);
+        File.WriteAllText(interpreter, string.Empty);
+        File.WriteAllText(
+            Path.Combine(root, "installed.txt"),
+            Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(requirements))));
+
+        Assert.True(python.IsBuiltFor(requirements));
+
+        // And an edit to the file is a different recipe, so somebody who changed
+        // theirs for their own card gets it installed rather than ignored.
+        File.WriteAllText(requirements, "voxcpm>=2.0\nnumpy\ntorch==2.9.1\n");
+        Assert.False(python.IsBuiltFor(requirements));
+    }
+
+    [Fact]
+    public void TheEnvironment_WithNoRequirementsFileIsNotBuilt()
+    {
+        var root = Path.Combine(_work, "env3");
+        Directory.CreateDirectory(root);
+        var python = new PythonEnvironment(root);
+        var interpreter = python.VenvPython;
+        Directory.CreateDirectory(Path.GetDirectoryName(interpreter)!);
+        File.WriteAllText(interpreter, string.Empty);
+        File.WriteAllText(Path.Combine(root, "installed.txt"), string.Empty);
+
+        Assert.False(python.IsBuiltFor(Path.Combine(_work, "not-there.txt")));
+    }
+
+    [Fact]
     public void TheSidecar_IsWrittenOutRatherThanLookedFor()
     {
         // The host loads extension assemblies from memory so no file lock is
@@ -426,7 +548,7 @@ public sealed class SpeechTests : IDisposable
         Assert.True(File.Exists(Path.Combine(directory, "sidecar.py")));
         Assert.True(File.Exists(Path.Combine(directory, "requirements.txt")));
         Assert.Contains(
-            "chatterbox", File.ReadAllText(Path.Combine(directory, "requirements.txt")));
+            "voxcpm", File.ReadAllText(Path.Combine(directory, "requirements.txt")));
         Assert.Contains(
             "PROTOCOL_VERSION", File.ReadAllText(Path.Combine(directory, "sidecar.py")));
     }
@@ -494,7 +616,7 @@ public sealed class SpeechTests : IDisposable
         Assert.Equal("com.novalist.speech", extension.Id);
         Assert.True(extension.Features.HasFlag(VoiceEngineFeatures.DesignFromDescription));
         Assert.True(extension.Features.HasFlag(VoiceEngineFeatures.EmotionVector));
-        Assert.True(extension.Features.HasFlag(VoiceEngineFeatures.EmotionInstruction));
+        Assert.True(extension.Features.HasFlag(VoiceEngineFeatures.Streaming));
         Assert.True(extension.Features.HasFlag(VoiceEngineFeatures.RunsOnCpu));
         // No cloning: there is no recording to clone from, which is also what
         // keeps a real person's voice out of this entirely.
@@ -503,6 +625,15 @@ public sealed class SpeechTests : IDisposable
         // the writer directed, which is the point of being able to overrule a
         // line.
         Assert.False(extension.Features.HasFlag(VoiceEngineFeatures.EmotionInferred));
+        // The model takes its direction as a phrase in front of the words, so
+        // the adapter builds that phrase from a closed vocabulary of its own. A
+        // sentence assembled out of the writer's prose must never reach it, so
+        // being sent one is worse than not being offered one.
+        Assert.False(extension.Features.HasFlag(VoiceEngineFeatures.EmotionInstruction));
+        // Every segment is a separate call with nothing carried across. Claiming
+        // otherwise told the host to skip the fade that takes the click off each
+        // join - a promise that made exported chapters worse and nothing better.
+        Assert.False(extension.Features.HasFlag(VoiceEngineFeatures.ContinuousContext));
     }
 
     [Theory]
@@ -534,8 +665,7 @@ public sealed class SpeechTests : IDisposable
     [InlineData("importing")]
     [InlineData("installing")]
     [InlineData("looking-for-python")]
-    [InlineData("loading-delivery")]
-    [InlineData("loading-design")]
+    [InlineData("loading-model")]
     [InlineData("ready")]
     public void TheExtension_HasWordsForEveryStepItReports(string step)
     {
@@ -585,7 +715,11 @@ public sealed class SpeechTests : IDisposable
     // The versions the speech stack has wheels for.
     [InlineData("Python 3.10.14", true)]
     [InlineData("Python 3.12.7", true)]
-    [InlineData("Python 3.13.1", true)]
+    // The model states 3.10 to 3.12 and there is no wheel above that. This was
+    // allowed, and on a machine with a current Python it picked exactly the
+    // interpreter the install then died on - after several minutes and a wall
+    // of pip output rather than one sentence.
+    [InlineData("Python 3.13.1", false)]
     // The commonest failure there is: the newest release is always the one
     // somebody just installed and always the one torch does not support yet. A
     // venv builds on it happily and the install dies seconds later.
@@ -598,6 +732,102 @@ public sealed class SpeechTests : IDisposable
     [InlineData("not a version at all", false)]
     public void APythonIsUsableOnlyWhereTheStackHasWheels(string version, bool usable)
         => Assert.Equal(usable, PythonEnvironment.IsUsable(version));
+
+    [Theory]
+    // The triples the uv release actually publishes under. Getting one of them
+    // wrong is not a loud failure - it is a 404 that reads as "no interpreter
+    // available" on a machine that could have had one.
+    [InlineData(Architecture.X64, true, false, "uv-x86_64-pc-windows-msvc.zip")]
+    [InlineData(Architecture.Arm64, true, false, "uv-aarch64-pc-windows-msvc.zip")]
+    [InlineData(Architecture.X64, false, true, "uv-x86_64-apple-darwin.tar.gz")]
+    [InlineData(Architecture.Arm64, false, true, "uv-aarch64-apple-darwin.tar.gz")]
+    [InlineData(Architecture.X64, false, false, "uv-x86_64-unknown-linux-gnu.tar.gz")]
+    [InlineData(Architecture.Arm64, false, false, "uv-aarch64-unknown-linux-gnu.tar.gz")]
+    // A machine nobody publishes for. Saying so beats downloading a 404 and
+    // reporting it as a corrupt archive.
+    [InlineData(Architecture.X86, true, false, null)]
+    public void TheInterpreterFetched_IsTheOneBuiltForThisMachine(
+        Architecture architecture, bool windows, bool mac, string? expected)
+        => Assert.Equal(expected, PortablePython.AssetName(architecture, windows, mac));
+
+    [Fact]
+    public void EveryStepAndEveryFault_HasASentenceInEveryLanguageWeShip()
+    {
+        // The failure this catches is silent and permanent: a step or a fault
+        // gains a key, nobody adds the string, and the writer is shown a bare
+        // code - "python-fetch-failed" - at the one moment they most need words.
+        // Without a locale loaded the extension answers with the code itself, so
+        // this reads the files rather than the extension.
+        var locales = LocalesDir();
+        var keys = new[]
+        {
+            "speech.preparing", "speech.noPython", "speech.pythonFetchFailed",
+            "speech.installFailed", "speech.notReady", "speech.noAnswer",
+            "speech.step.starting", "speech.step.python", "speech.step.fetchingPython",
+            "speech.step.environment", "speech.step.downloading", "speech.step.cuda",
+            "speech.step.installing", "speech.step.installed", "speech.step.importing",
+            "speech.step.loadingModel", "speech.step.ready"
+        };
+
+        foreach (var language in new[] { "en", "de", "zh-CN" })
+        {
+            var said = Flatten(JsonDocument.Parse(
+                File.ReadAllText(Path.Combine(locales, language + ".json"))).RootElement);
+            foreach (var key in keys)
+            {
+                Assert.True(
+                    said.TryGetValue(key, out var text) && text.Trim().Length > 0,
+                    $"{language}.json has nothing to say for {key}");
+            }
+        }
+    }
+
+    /// <summary>The locale files, found by walking up from the test assembly -
+    /// they are not embedded, because the host reads them off disk.</summary>
+    private static string LocalesDir()
+    {
+        var at = new DirectoryInfo(AppContext.BaseDirectory);
+        while (at != null)
+        {
+            var wanted = Path.Combine(at.FullName, "Novalist.Extensions.Speech", "locales");
+            if (Directory.Exists(wanted))
+                return wanted;
+            at = at.Parent;
+        }
+        throw new DirectoryNotFoundException("the Speech locales are not above the test assembly");
+    }
+
+    /// <summary>The locale files mix flat "a.b.c" keys with nested objects, and
+    /// a key spelled either way is the same key to the host.</summary>
+    private static Dictionary<string, string> Flatten(JsonElement element, string prefix = "")
+    {
+        var said = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var property in element.EnumerateObject())
+        {
+            var key = prefix.Length == 0 ? property.Name : prefix + "." + property.Name;
+            if (property.Value.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var (nested, text) in Flatten(property.Value, key))
+                    said[nested] = text;
+            }
+            else if (property.Value.ValueKind == JsonValueKind.String)
+            {
+                said[key] = property.Value.GetString() ?? string.Empty;
+            }
+        }
+        return said;
+    }
+
+    [Fact]
+    public void TheEngine_TakesAClipTheWriterPointedAtAsADirection()
+    {
+        // The host had built this whole path - a dropdown of lines already
+        // heard, a store, an RPC - and no engine claimed the flag, so picking a
+        // line and pressing apply changed nothing at all and said nothing about
+        // it. This model is unusually well suited to it: it clones its whole
+        // delivery from its reference, prosody included.
+        Assert.True(new SpeechExtension().Features.HasFlag(VoiceEngineFeatures.EmotionReference));
+    }
 
     [Fact]
     public void TheExtension_ReportsNoFaultAsNothingRatherThanAsAnEmptyString()
@@ -619,7 +849,10 @@ public sealed class SpeechTests : IDisposable
         Assert.Equal("not-initialised", status.Error);
     }
 
-    private static NarrationRequest Request() => new()
+    /// <param name="like">A clip the writer pointed at and said "like that",
+    /// which is null on almost every line there has ever been.</param>
+    /// <param name="lines">How many lines the run is, all in the one voice.</param>
+    private static NarrationRequest Request(byte[]? like = null, int lines = 1) => new()
     {
         Language = "en",
         Rate = 1.0,
@@ -629,10 +862,10 @@ public sealed class SpeechTests : IDisposable
         },
         Segments =
         [
-            new NarrationSegment
+            .. Enumerable.Range(1, lines).Select(at => new NarrationSegment
             {
-                Key = "d:1",
-                Text = "You are late,",
+                Key = "d:" + at,
+                Text = at == 1 ? "You are late," : "And you know it.",
                 VoiceId = "mira-voice",
                 IsDialogue = true,
                 Direction = new VoiceDirection
@@ -640,9 +873,10 @@ public sealed class SpeechTests : IDisposable
                     Key = "angry",
                     Vector = new Dictionary<string, double> { ["angry"] = 0.9 },
                     Instruction = "Read this angry, as though snapped.",
-                    Source = "Verb"
+                    Source = "Verb",
+                    ReferenceAudio = like
                 }
-            }
+            })
         ]
     };
 
@@ -702,7 +936,7 @@ public sealed class SpeechTests : IDisposable
             // Longer than the first-word deadline would have allowed.
             await Task.Delay(pause, cancellationToken);
             return JsonSerializer.Serialize(
-                new { type = "ready", version = 1, ready = true, detail = "on cuda" });
+                new { type = "ready", version = SidecarProtocolVersion, ready = true, detail = "on cuda" });
         }
 
         public void Stop() => IsRunning = false;

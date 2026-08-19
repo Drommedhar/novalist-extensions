@@ -47,6 +47,15 @@ jobs:
         working-directory: novalist-extension
         run: dotnet test -c Release --no-build
 
+      # The sidecar is Python and so is outside the .NET test run, which is how
+      # it came to have no tests at all - and how the language, the reading rate
+      # and the per-line direction all arrived there and were silently dropped
+      # without anything going red. Only the decisions in front of the model are
+      # covered; the model itself is gigabytes of weights and a GPU.
+      - name: Test the speech sidecar
+        working-directory: novalist-extension
+        run: python3 -m unittest discover -s Novalist.Extensions.Speech/python -v
+
       - name: Check every manifest is readable and consistent
         working-directory: novalist-extension
         run: |

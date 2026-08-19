@@ -56,6 +56,7 @@ jobs:
             insight)  PROJECT=Novalist.Extensions.Insight;  ID=com.novalist.insight ;;
             toolkit)  PROJECT=Novalist.Extensions.Toolkit;  ID=com.novalist.toolkit ;;
             publish)  PROJECT=Novalist.Extensions.Publish;  ID=com.novalist.publish ;;
+            speech)   PROJECT=Novalist.Extensions.Speech;   ID=com.novalist.speech ;;
             *)
               echo "::error::Unknown extension slug '$SLUG'. Tag as <slug>-v<version>."
               exit 1
