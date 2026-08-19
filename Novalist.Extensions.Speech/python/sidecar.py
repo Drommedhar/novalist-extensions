@@ -147,6 +147,11 @@ def keep_failure(work: str, what: str, message: str) -> None:
 # come from what the writer wrote about them rather than from a real person.
 DESIGN_MODEL = os.environ.get("NOVALIST_TTS_DESIGN_MODEL", "OpenMOSS-Team/MOSS-VoiceGenerator")
 
+# How many draws a design gets before giving up. The first is the stable one
+# the brief asks for; the rest are only reached when that draw produced audio
+# the model's own decoder could not read.
+DESIGN_ATTEMPTS = 4
+
 
 @dataclass
 class Engine:
@@ -351,25 +356,42 @@ def do_design(engine: Engine, work: str, request: dict[str, Any]) -> None:
     instruction = (brief or "A clear, neutral speaking voice at an even tempo.")
     instruction += native_hint(request.get("language"))
 
-    # Seeded from the brief, so asking for the same voice twice gives the same
-    # voice. Design is otherwise non-deterministic, and a character who sounded
-    # different every session would not be a character.
-    torch.manual_seed(seed_from(brief + voice_id))
-
     processor = engine.design_processor
     conversation = [[processor.build_user_message(text=spoken, instruction=instruction)]]
     batch = processor(conversation, mode="generation")
 
-    with torch.no_grad():
-        outputs = engine.designer.generate(
-            input_ids=batch["input_ids"].to(engine.device),
-            attention_mask=batch["attention_mask"].to(engine.device),
-        )
-
+    # Seeded from the brief, so asking for the same voice twice gives the same
+    # voice. Design is otherwise non-deterministic, and a character who sounded
+    # different every session would not be a character.
+    #
+    # But a seed is a draw, and some draws produce audio the model's own decoder
+    # cannot parse - "split_sizes to sum exactly to 121, but got [56]", a
+    # generation that never closed. Because the seed comes from the brief, an
+    # unlucky one is not bad luck once: that description is broken for ever, and
+    # pressing the button again reproduces it exactly. So the first seed is the
+    # stable one and the next few are fallbacks, tried only when the draw was
+    # bad. A voice that designs first time still designs the same every time.
+    base = seed_from(brief + voice_id)
     wav = None
-    for message in processor.decode(outputs):
-        wav = message.audio_codes_list[0]
-        break
+    for attempt in range(DESIGN_ATTEMPTS):
+        torch.manual_seed(base + attempt)
+        try:
+            with torch.no_grad():
+                outputs = engine.designer.generate(
+                    input_ids=batch["input_ids"].to(engine.device),
+                    attention_mask=batch["attention_mask"].to(engine.device),
+                )
+            for message in processor.decode(outputs):
+                wav = message.audio_codes_list[0]
+                break
+        except RuntimeError:
+            # The decoder refusing what the model produced. Another draw is
+            # worth more than an error the writer can do nothing about.
+            note("design attempt %d could not be decoded" % (attempt + 1))
+            wav = None
+        if wav is not None:
+            break
+
     if wav is None:
         emit(type="error", key=voice_id, error="designed nothing")
         return
