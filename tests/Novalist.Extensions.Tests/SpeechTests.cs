@@ -61,6 +61,40 @@ public sealed class SpeechTests : IDisposable
         public void Dispose() => Stop();
     }
 
+    /// <summary>A sidecar that starts and then says nothing, ever.</summary>
+    private sealed class SilentChannel : ISidecarChannel
+    {
+        public bool IsRunning { get; private set; }
+        public bool Stopped { get; private set; }
+
+        public Task StartAsync(CancellationToken cancellationToken = default)
+        {
+            IsRunning = true;
+            return Task.CompletedTask;
+        }
+
+        public Task SendAsync(string line, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        // Never answers, and never returns of its own accord - which is exactly
+        // what a sidecar that dropped the request does. Cancelling throws, the
+        // way a real cancelled read off the process's output does; returning
+        // null instead would be the fake claiming the process had closed.
+        public async Task<string?> ReadAsync(CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return null;
+        }
+
+        public void Stop()
+        {
+            IsRunning = false;
+            Stopped = true;
+        }
+
+        public void Dispose() => Stop();
+    }
+
     private VoiceEngine Engine(params string[] replies)
         => new(() => new FakeChannel(replies), _work);
 
@@ -611,4 +645,68 @@ public sealed class SpeechTests : IDisposable
             }
         ]
     };
+
+    [Fact]
+    public async Task ASidecarThatNeverAnswers_IsGivenUpOnRatherThanWaitedForForEver()
+    {
+        // The failure this ends: a stray byte on the front of the first request
+        // meant the sidecar dropped it and went back to listening, the host
+        // waited for a reply that was never coming, and the writer watched a
+        // dialog that said "Starting" until they killed the application.
+        var channel = new SilentChannel();
+        var engine = new VoiceEngine(() => channel, _work, TimeSpan.FromMilliseconds(80));
+
+        await engine.PrepareAsync(null);
+
+        Assert.False(engine.IsReady);
+        Assert.Equal("no-answer", engine.Fault);
+        Assert.True(channel.Stopped);
+    }
+
+    [Fact]
+    public async Task ASidecarThatIsMerelySlow_IsNotGivenUpOn()
+    {
+        // Everything after the first word is a model download measured in
+        // gigabytes, and no deadline belongs anywhere near it.
+        var channel = new SlowChannel(TimeSpan.FromMilliseconds(200));
+        var engine = new VoiceEngine(() => channel, _work, TimeSpan.FromMilliseconds(80));
+
+        await engine.PrepareAsync(null);
+
+        Assert.True(engine.IsReady);
+        Assert.Null(engine.Fault);
+    }
+
+    /// <summary>Speaks at once, then takes its time over the rest.</summary>
+    private sealed class SlowChannel(TimeSpan pause) : ISidecarChannel
+    {
+        private int _step;
+
+        public bool IsRunning { get; private set; }
+
+        public Task StartAsync(CancellationToken cancellationToken = default)
+        {
+            IsRunning = true;
+            return Task.CompletedTask;
+        }
+
+        public Task SendAsync(string line, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public async Task<string?> ReadAsync(CancellationToken cancellationToken = default)
+        {
+            _step++;
+            if (_step == 1)
+                return JsonSerializer.Serialize(new { type = "progress", step = "importing" });
+
+            // Longer than the first-word deadline would have allowed.
+            await Task.Delay(pause, cancellationToken);
+            return JsonSerializer.Serialize(
+                new { type = "ready", version = 1, ready = true, detail = "on cuda" });
+        }
+
+        public void Stop() => IsRunning = false;
+
+        public void Dispose() => Stop();
+    }
 }

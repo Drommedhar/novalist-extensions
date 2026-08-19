@@ -67,8 +67,17 @@ internal sealed class ProcessSidecarChannel : ISidecarChannel
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardInputEncoding = Encoding.UTF8
+            // Without a byte-order mark, and that is the whole of it.
+            //
+            // Encoding.UTF8 is a UTF8Encoding built to emit one, so the first
+            // thing ever written to the sidecar's input was EF BB BF and then
+            // the request. Python read a line beginning with U+FEFF, could not
+            // parse it as JSON, and dropped it - so the very first request of
+            // every session was swallowed, both sides waited for the other for
+            // ever, and the writer watched a dialog that said "Starting" until
+            // they gave up. Three bytes.
+            StandardOutputEncoding = new UTF8Encoding(false),
+            StandardInputEncoding = new UTF8Encoding(false)
         };
         // -u so the sidecar's replies are not sat on in a buffer while the host
         // waits for a line that was written a minute ago.
@@ -76,6 +85,13 @@ internal sealed class ProcessSidecarChannel : ISidecarChannel
         info.ArgumentList.Add(_script);
         info.ArgumentList.Add("--work");
         info.ArgumentList.Add(_workingDirectory);
+
+        // Belt and braces for the same thing the sidecar sets on itself: on a
+        // machine whose locale is a code page, Python's standard streams are
+        // that code page unless told otherwise, and the payload here is
+        // somebody's novel.
+        info.Environment["PYTHONUTF8"] = "1";
+        info.Environment["PYTHONIOENCODING"] = "utf-8";
 
         _process = Process.Start(info)
             ?? throw new InvalidOperationException("the speech sidecar did not start");

@@ -275,6 +275,7 @@ public sealed class SpeechExtension : IExtension, IVoiceEngineContributor, IDisp
         null => string.Empty,
         "no-python" => T("speech.noPython", fault),
         "sidecar-exited" or "version" => T("speech.notReady", fault),
+        "no-answer" => T("speech.noAnswer", fault),
         _ when fault.StartsWith("venv-failed", StringComparison.Ordinal)
             || fault.StartsWith("install-failed", StringComparison.Ordinal)
             => T("speech.installFailed", fault),

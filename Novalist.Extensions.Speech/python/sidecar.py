@@ -44,6 +44,28 @@ from typing import Any
 
 PROTOCOL_VERSION = 1
 
+
+def _speak_utf8() -> None:
+    """Make the protocol UTF-8 at both ends, whatever the machine's locale is.
+
+    Python takes its standard streams from the system locale, which on a German
+    or Chinese Windows install is a code page - cp1252, cp936 - and not UTF-8.
+    The host writes UTF-8. Left alone, every umlaut and every Chinese character
+    in the manuscript arrives here as mojibake or as a decode error that kills
+    the read loop, and a reply carrying one cannot be written back at all.
+
+    A novel is exactly the payload this breaks, so it is set explicitly rather
+    than left to the environment.
+    """
+    for stream in (sys.stdin, sys.stdout):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):  # pragma: no cover - very old Python
+            pass
+
+
+_speak_utf8()
+
 # Overridable, because a writer with a better checkpoint should not wait for us
 # to publish a release.
 MODEL = os.environ.get("NOVALIST_TTS_MODEL", "chatterbox")
@@ -285,13 +307,21 @@ def main() -> int:
     engine: Engine | None = None
 
     for line in sys.stdin:
-        line = line.strip()
+        # A byte-order mark, if the host's encoder insists on writing one. It is
+        # not whitespace and json.loads will not have it, so it has to come off
+        # explicitly rather than by stripping.
+        line = line.lstrip("﻿").strip()
         if not line:
             continue
 
         try:
             request = json.loads(line)
         except json.JSONDecodeError:
+            # Said, not swallowed. Dropping an unreadable line in silence is how
+            # three stray bytes on the front of the first request turned into a
+            # dialog that read "Starting" for ever: both sides waited for the
+            # other, and nothing anywhere said why.
+            emit(type="error", error="bad-request")
             continue
 
         op = request.get("op")

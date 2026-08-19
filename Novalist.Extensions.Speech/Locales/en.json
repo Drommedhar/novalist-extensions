@@ -13,5 +13,8 @@
   "speech.step.python": "Looking for Python",
   "speech.step.installing": "Installing",
   "speech.step.importing": "Starting Python and loading torch",
-  "speech.step.cuda": "Fetching the GPU build — this is the big one"
+  "speech.step.cuda": "Fetching the GPU build — this is the big one",
+  "speech": {
+    "noAnswer": "The speech engine started but never answered. Close Novalist and prepare it again; if it keeps happening, delete the extension's folder in your application data so it can rebuild."
+  }
 }

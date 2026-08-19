@@ -26,16 +26,34 @@ internal sealed class VoiceEngine : IDisposable
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
     };
 
+    /// <summary>
+    /// How long the sidecar has to say anything at all before it is given up on.
+    ///
+    /// Applies only until its first word. After that it is trusted for as long
+    /// as it likes, because the wait between "loading" and "ready" is a model
+    /// download measured in gigabytes and no deadline belongs anywhere near it.
+    /// Before it, though, there is nothing but starting an interpreter - so
+    /// silence this long means silence for ever, and saying so beats a dialog
+    /// that reads "Starting" until the writer kills the app.
+    /// </summary>
+    private static readonly TimeSpan DefaultFirstWordDeadline = TimeSpan.FromSeconds(120);
+
     private readonly Func<ISidecarChannel> _channels;
     private readonly string _workingDirectory;
+    private readonly TimeSpan _firstWord;
     private ISidecarChannel? _channel;
     private string _detail = string.Empty;
     private string? _fault;
 
-    public VoiceEngine(Func<ISidecarChannel> channels, string workingDirectory)
+    /// <param name="firstWord">How long the sidecar has to say anything at all.
+    /// Injected so a test can assert the give-up without waiting two minutes for
+    /// it.</param>
+    public VoiceEngine(
+        Func<ISidecarChannel> channels, string workingDirectory, TimeSpan? firstWord = null)
     {
         _channels = channels;
         _workingDirectory = workingDirectory;
+        _firstWord = firstWord ?? DefaultFirstWordDeadline;
     }
 
     /// <summary>True once the sidecar has answered that its models are loaded.</summary>
@@ -76,8 +94,29 @@ internal sealed class VoiceEngine : IDisposable
 
         await SendAsync(new SidecarRequest { Op = "status" }, cancellationToken);
 
-        while (await ReadAsync(cancellationToken) is { } reply)
+        // Armed only for the first reply; cancelled the moment one arrives.
+        using var mute = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        mute.CancelAfter(_firstWord);
+        var heard = false;
+
+        while (true)
         {
+            SidecarReply? reply;
+            try
+            {
+                reply = await ReadAsync(heard ? cancellationToken : mute.Token);
+            }
+            catch (OperationCanceledException) when (!heard && !cancellationToken.IsCancellationRequested)
+            {
+                _fault = "no-answer";
+                Stop();
+                return;
+            }
+
+            if (reply == null)
+                break;
+            heard = true;
+
             switch (reply.Type)
             {
                 case "progress":
