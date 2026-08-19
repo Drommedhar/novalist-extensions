@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import sys
@@ -118,6 +119,27 @@ def note(message: str) -> None:
     """Diagnostics, to stderr - never stdout, which is the protocol."""
     sys.stderr.write(message + "\n")
     sys.stderr.flush()
+
+
+def keep_failure(work: str, what: str, message: str) -> None:
+    """Writes a failure down where somebody can read it afterwards.
+
+    The host routes this process's stderr to a debugger and nowhere else, on
+    purpose - a model can echo the words it was given, and a diagnostic log a
+    writer might send us must never carry a paragraph of their book. But that
+    left a failure with nothing behind it but the name of an exception type,
+    which is not enough to fix anything.
+
+    So it goes to a file beside the environment, on the writer's own machine,
+    never read by the application and never sent anywhere - the same place and
+    the same reasoning as install-failed.txt.
+    """
+    try:
+        path = os.path.join(os.path.dirname(os.path.abspath(work)), f"{what}-failed.txt")
+        with io.open(path, "w", encoding="utf-8") as handle:
+            handle.write(message)
+    except OSError:
+        pass
 
 
 # The voice designer: free-form text in, a speaker's timbre out, with no
@@ -476,7 +498,15 @@ def main() -> int:
             else:
                 emit(type="error", error="unknown op")
         except Exception as failure:  # noqa: BLE001 - report and keep listening
-            note(traceback.format_exc())
+            trace = traceback.format_exc()
+            note(trace)
+            keep_failure(args.work, op or "request", trace)
+            # A model that failed once is not to be trusted to have survived it
+            # - a CUDA fault in particular poisons everything after it - so it
+            # is dropped and built again next time rather than reused.
+            if engine is not None and op == "design":
+                engine.designer = None
+                engine.design_processor = None
             # The type only. The message can quote a path, and the host writes
             # what it is told into a log the writer may send us.
             emit(type="error", error=type(failure).__name__)
