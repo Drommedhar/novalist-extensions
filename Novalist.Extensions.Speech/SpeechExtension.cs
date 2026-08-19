@@ -310,7 +310,7 @@ public sealed class SpeechExtension : IExtension, IVoiceEngineContributor, IDisp
     /// figure depends on the machine's CUDA build, and a precise-looking number
     /// that is wrong is worse than an honest estimate.
     /// </summary>
-    private const long ApproximateDownloadBytes = 6L * 1024 * 1024 * 1024;
+    private const long ApproximateDownloadBytes = 10L * 1024 * 1024 * 1024;
 
     private VoiceEngine Engine()
         => _engine ?? throw new InvalidOperationException("the speech extension is not initialised");

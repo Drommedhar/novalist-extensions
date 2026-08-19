@@ -18,3 +18,9 @@ numpy
 # callable" - a failure that says nothing about the cause and arrives after
 # several gigabytes of waiting.
 setuptools<81
+
+# The voice designer is a transformers model with its own loading code, and
+# the weights come down through the hub client. Both arrive with chatterbox
+# today; named here because this file depends on them directly.
+transformers
+huggingface_hub

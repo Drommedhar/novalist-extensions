@@ -6,27 +6,30 @@ the extension reads the file. Anything the models print goes to stderr, which th
 host routes to the debugger only - a model that echoes its prompt must not be
 able to write a paragraph of somebody's novel into a log they might send us.
 
-The engine is Chatterbox (Resemble AI), which does two things this needs:
+Two models, because the feature is two things.
 
-  clone     it speaks in the voice of a reference clip. That is what makes a
-            designed voice a *thing* rather than a prompt: the clip is the
-            identity, stored by the host, reused for every line that character
-            ever speaks.
+  design    MOSS-VoiceGenerator (OpenMOSS, Apache-2.0) makes a speaker's timbre
+            out of free-form text and nothing else - no reference recording
+            anywhere. "Eine Frau mit ruhiger Stimme, mittleren Alters" comes
+            back as a voice. That is what lets a character's voice come from
+            what the writer already wrote about them, and it is also what keeps
+            any real person's likeness out of this entirely.
 
-  exaggerate  it takes an emotional intensity per utterance, separately from the
-            voice. That is the other half - one identity, performed differently
-            in every scene.
+            It runs once per character. The clip it returns *is* the voice from
+            then on: the host stores it, and it is never generated again -
+            design is not deterministic, and a character who sounded different
+            every session would not be a character.
 
-**What "design" means here, honestly.** Chatterbox clones; it is not a
-text-to-voice designer. A character's voice is made by speaking a line in the
-model's own built-in voice with generation settings seeded from their brief, and
-keeping the result as their reference clip. Every character therefore gets a
-*distinct and stable* voice, which is what the two-stage design needs - but the
-words of the brief steer it only weakly. A true designer can be dropped in
-behind the same protocol when one is pip-installable; nothing else here changes.
+  deliver   Chatterbox (Resemble AI) speaks each line in that stored voice,
+            taking an emotional intensity per utterance separately from the
+            timbre. One identity, performed differently in every scene.
 
-Both models are local. This file opens no socket; the only network traffic is
-the one-off weight download huggingface_hub does on first load, which the writer
+            The multilingual checkpoint, so the book is read in its own
+            language. The split helps here too: the designed clip fixes who is
+            speaking, and delivery decides what language they speak.
+
+Both are local. This file opens no socket; the only network traffic is the
+one-off weight download huggingface_hub does on first load, which the writer
 started deliberately by pressing Prepare.
 """
 
@@ -117,11 +120,23 @@ def note(message: str) -> None:
     sys.stderr.flush()
 
 
+# The voice designer: free-form text in, a speaker's timbre out, with no
+# reference recording anywhere near it. This is what makes a character's voice
+# come from what the writer wrote about them rather than from a real person.
+DESIGN_MODEL = os.environ.get("NOVALIST_TTS_DESIGN_MODEL", "OpenMOSS-Team/MOSS-VoiceGenerator")
+
+
 @dataclass
 class Engine:
     model: Any
     device: str
     sample_rate: int
+    # Loaded the first time a voice is designed, not at startup: a reading needs
+    # only the delivery model, and nobody should wait for - or hold the memory
+    # of - a designer they are not using.
+    designer: Any = None
+    design_processor: Any = None
+    design_rate: int = 24000
 
 
 def pick_device() -> str:
@@ -179,7 +194,6 @@ def load() -> Engine:
     # away here.
     emit(type="progress", step="loading-delivery", detail=device)
     model = ChatterboxMultilingualTTS.from_pretrained(device=device)
-    emit(type="progress", step="loading-design")
     return Engine(model=model, device=device, sample_rate=int(model.sr))
 
 
@@ -216,27 +230,72 @@ def seed_from(text: str) -> int:
     return int.from_bytes(digest[:4], "big")
 
 
-def design_settings(brief: str) -> dict[str, float]:
-    """Generation settings for one character, derived from their brief.
+def load_designer(engine: Engine) -> None:
+    """Brings up the voice designer, once.
 
-    Temperature and guidance move the speaker; the numbers are spread across a
-    range that stays intelligible rather than the model's whole span, because a
-    voice nobody can follow is not a voice.
+    Kept apart from the delivery model on purpose. Designing happens a handful
+    of times per book - once per character - and reading happens tens of
+    thousands, so the designer is fetched when it is first wanted and the
+    reading never pays for it.
     """
-    seed = seed_from(brief)
-    return {
-        "temperature": 0.6 + ((seed >> 3) % 60) / 100.0,
-        "cfg_weight": 0.3 + ((seed >> 11) % 45) / 100.0,
-        "exaggeration": 0.4 + ((seed >> 19) % 25) / 100.0,
-    }
+    if engine.designer is not None:
+        return
+
+    import torch
+    from huggingface_hub import snapshot_download
+    from transformers import AutoModel, AutoProcessor
+
+    emit(type="progress", step="loading-design", detail=engine.device)
+
+    # A local directory rather than the repository name. The model ships its own
+    # loading code, and that code does Path(name_or_path) - which on Windows
+    # rewrites the slash in "OpenMOSS-Team/MOSS-VoiceGenerator" as a backslash
+    # and then fails its own repository-name check. A real path has no slash to
+    # rewrite.
+    local = snapshot_download(repo_id=DESIGN_MODEL)
+
+    if engine.device == "cuda":
+        # The cuDNN attention kernel is broken for this model; the others are
+        # the fallbacks its own authors ask for.
+        torch.backends.cuda.enable_cudnn_sdp(False)
+        torch.backends.cuda.enable_flash_sdp(True)
+        torch.backends.cuda.enable_mem_efficient_sdp(True)
+        torch.backends.cuda.enable_math_sdp(True)
+
+    processor = AutoProcessor.from_pretrained(
+        local, trust_remote_code=True, normalize_inputs=True
+    )
+    processor.audio_tokenizer = processor.audio_tokenizer.to(engine.device)
+
+    model = AutoModel.from_pretrained(
+        local,
+        trust_remote_code=True,
+        attn_implementation="sdpa" if engine.device == "cuda" else "eager",
+        dtype=torch.bfloat16 if engine.device == "cuda" else torch.float32,
+    ).to(engine.device)
+    model.eval()
+
+    engine.designer = model
+    engine.design_processor = processor
+    engine.design_rate = int(processor.model_config.sampling_rate)
 
 
 def do_design(engine: Engine, work: str, request: dict[str, Any]) -> None:
-    """Stage one: make this character's reference clip and hand it back."""
+    """Stage one: make this character's voice out of what was written about them.
+
+    The brief goes in as the instruction and comes back as a timbre. Nothing is
+    cloned and no recording of anybody is involved, which is what lets a voice
+    be designed from a Codex entry at all.
+
+    The clip this returns *is* the voice from here on: the host stores it, and
+    every line that character ever speaks is delivered in it.
+    """
     import torch
 
+    load_designer(engine)
+
     voice_id = str(request.get("voiceId") or "voice")
-    brief = str(request.get("description") or "")
+    brief = str(request.get("description") or "").strip()
     samples = [line for line in (request.get("sampleLines") or []) if str(line).strip()]
 
     # Their own words where there are any: a voice made from a line the
@@ -246,24 +305,38 @@ def do_design(engine: Engine, work: str, request: dict[str, Any]) -> None:
     )
     spoken = spoken.strip()[:200]
 
-    settings = design_settings(brief + voice_id)
+    instruction = brief or "A clear, neutral speaking voice at an even tempo."
+
+    # Seeded from the brief, so asking for the same voice twice gives the same
+    # voice. Design is otherwise non-deterministic, and a character who sounded
+    # different every session would not be a character.
     torch.manual_seed(seed_from(brief + voice_id))
 
-    wav = engine.model.generate(
-        spoken,
-        language_id=language_id(request.get("language")),
-        temperature=settings["temperature"],
-        cfg_weight=settings["cfg_weight"],
-        exaggeration=settings["exaggeration"],
-    )
+    processor = engine.design_processor
+    conversation = [[processor.build_user_message(text=spoken, instruction=instruction)]]
+    batch = processor(conversation, mode="generation")
+
+    with torch.no_grad():
+        outputs = engine.designer.generate(
+            input_ids=batch["input_ids"].to(engine.device),
+            attention_mask=batch["attention_mask"].to(engine.device),
+        )
+
+    wav = None
+    for message in processor.decode(outputs):
+        wav = message.audio_codes_list[0]
+        break
+    if wav is None:
+        emit(type="error", key=voice_id, error="designed nothing")
+        return
 
     name = "design-%s.wav" % hashlib.sha256(voice_id.encode("utf-8")).hexdigest()[:12]
-    duration = write_wav(os.path.join(work, name), wav, engine.sample_rate)
+    duration = write_wav(os.path.join(work, name), wav, engine.design_rate)
     emit(
         type="designed",
         key=voice_id,
         file=name,
-        sampleRate=engine.sample_rate,
+        sampleRate=engine.design_rate,
         durationMs=duration,
     )
 

@@ -15,15 +15,19 @@ Two stages, kept apart on purpose:
 
 That separation is the whole point. A character is one identity and many performances — furious in chapter three, grieving in chapter twenty, recognisably the same person.
 
-### What "design" means here — honestly
+### The two models
 
-The engine is [Chatterbox](https://github.com/resemble-ai/chatterbox), which **clones** a voice from a reference clip. It is not a text-to-voice designer.
+**Design** is [MOSS-VoiceGenerator](https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator) (OpenMOSS, Apache-2.0), a voice-design model that makes a speaker's timbre out of free-form text and nothing else. No reference recording is involved at any point, which is what lets a character's voice come from what you already wrote about them — and what keeps any real person's likeness out of this entirely.
 
-So a character's voice is made by speaking one of their own lines in the model's built-in voice, with generation settings seeded from their brief, and keeping the result as their reference clip. Every character gets a **distinct and stable** voice — which is what the two-stage design needs — but the *words* of the brief steer it only weakly. Two different briefs give two different voices; a brief that says "gravelly" does not reliably give you gravel.
+Write *"a calm woman's voice, middle aged, unhurried and warm"* and that is what you get. It runs once per character, on your own machine, in a couple of seconds on a graphics card.
 
-That is a real limitation and worth knowing before you write a careful description expecting it to be obeyed. A true text-to-voice designer drops in behind the same protocol the day one is installable, and nothing else here changes.
+**Delivery** is [Chatterbox](https://github.com/resemble-ai/chatterbox) (Resemble AI), which speaks each line in that stored voice and takes an emotional intensity per utterance, separately from the timbre. The multilingual checkpoint, so your book is read in the language you wrote it in.
+
+The split does more than divide labour: the designed clip fixes *who* is speaking, and delivery decides *what language* they speak and *how they feel*. A voice designed from an English description reads a German novel in German, in that voice.
 
 ## Installing
+
+The first **Prepare** builds a Python environment and fetches both models — several gigabytes, once. Designing a voice loads the design model the first time you use it, not before: a reading needs only the delivery model, and nobody should wait for a designer they are not using.
 
 1. Build this project. On Windows it deploys itself to `%APPDATA%\Novalist\Extensions\Speech`.
 2. Open Novalist and visit **Extensions** once, which loads it.
