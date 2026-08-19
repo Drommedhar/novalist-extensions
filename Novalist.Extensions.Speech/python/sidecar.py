@@ -95,8 +95,18 @@ EXAGGERATION_CEILING = 0.9
 HEIGHTENING = {"angry", "afraid", "surprised", "happy", "disgusted"}
 
 
+# The request being served, stamped onto everything said about it.
+#
+# A reading the writer stopped goes on being spoken - the model cannot be
+# interrupted mid-utterance - so its replies must be recognisable as
+# belonging to a request nobody is listening to any more. Without that they
+# arrive in the middle of the next request and are read as answers to it.
+CURRENT_ID = ""
+
+
 def emit(**payload: Any) -> None:
     """One reply line. Flushed, because the host is waiting on it."""
+    payload.setdefault("id", CURRENT_ID)
     sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
     sys.stdout.flush()
 
@@ -134,6 +144,20 @@ def pick_device() -> str:
     return "cpu"
 
 
+def language_id(tag: str | None) -> str:
+    """The model's language id for a BCP-47 tag the host sent.
+
+    "de-DE" and "de" are both German; "zh-CN" is Chinese. A language the
+    model does not have falls back to English rather than failing the
+    reading - a book read in the wrong accent is worse than one not read at
+    all only until you consider that the alternative here is silence.
+    """
+    from chatterbox import SUPPORTED_LANGUAGES
+
+    base = (tag or "en").replace("_", "-").split("-")[0].lower()
+    return base if base in SUPPORTED_LANGUAGES else "en"
+
+
 def load() -> Engine:
     """Loads the model.
 
@@ -143,13 +167,18 @@ def load() -> Engine:
     reads as broken where a moving one reads as working.
     """
     emit(type="progress", step="importing")
-    from chatterbox.tts import ChatterboxTTS
+    from chatterbox import ChatterboxMultilingualTTS
 
     device = pick_device()
-    # The first call fetches about a gigabyte of weights; after that it is a
-    # read from disk. Said separately because the two feel nothing alike.
+    # The first call fetches the weights; after that it is a read from disk.
+    # Said separately because the two feel nothing alike.
+    #
+    # The multilingual checkpoint rather than the English one. A German
+    # novel read in an English accent is not a reading of that novel, and
+    # the host has always sent the book's language - it was simply thrown
+    # away here.
     emit(type="progress", step="loading-delivery", detail=device)
-    model = ChatterboxTTS.from_pretrained(device=device)
+    model = ChatterboxMultilingualTTS.from_pretrained(device=device)
     emit(type="progress", step="loading-design")
     return Engine(model=model, device=device, sample_rate=int(model.sr))
 
@@ -222,6 +251,7 @@ def do_design(engine: Engine, work: str, request: dict[str, Any]) -> None:
 
     wav = engine.model.generate(
         spoken,
+        language_id=language_id(request.get("language")),
         temperature=settings["temperature"],
         cfg_weight=settings["cfg_weight"],
         exaggeration=settings["exaggeration"],
@@ -260,6 +290,7 @@ def exaggeration_for(segment: dict[str, Any]) -> float:
 
 def do_render(engine: Engine, work: str, request: dict[str, Any]) -> None:
     voices = request.get("voices") or {}
+    lang = language_id(request.get("language"))
 
     for index, segment in enumerate(request.get("segments") or []):
         key = str(segment.get("key") or "")
@@ -273,13 +304,18 @@ def do_render(engine: Engine, work: str, request: dict[str, Any]) -> None:
             continue
 
         try:
-            name = "clip-%04d-%s.wav" % (
+            # The request id is in the name, so an abandoned render can
+            # neither overwrite a live one's clip nor have its own deleted
+            # out from under it.
+            name = "clip-%s-%04d-%s.wav" % (
+                CURRENT_ID or "x",
                 index,
                 hashlib.sha256(key.encode("utf-8")).hexdigest()[:10],
             )
             target = os.path.join(work, name)
             wav = engine.model.generate(
                 text,
+                language_id=lang,
                 audio_prompt_path=os.path.join(work, reference),
                 exaggeration=exaggeration_for(segment),
             )
@@ -325,6 +361,8 @@ def main() -> int:
             continue
 
         op = request.get("op")
+        global CURRENT_ID
+        CURRENT_ID = str(request.get("id") or "")
         try:
             if engine is None and op in {"status", "design", "render"}:
                 engine = load()

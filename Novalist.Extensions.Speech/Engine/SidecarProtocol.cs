@@ -32,6 +32,20 @@ internal sealed class SidecarRequest
     [JsonPropertyName("op")]
     public string Op { get; init; } = string.Empty;
 
+    /// <summary>
+    /// Which request this is. Echoed on every reply to it.
+    ///
+    /// The sidecar renders a window one line at a time and cannot be
+    /// interrupted while it is inside the model, so a reading the writer
+    /// stopped goes on being spoken into the working directory after the host
+    /// has given up listening. Without a stamp, those replies arrive in the
+    /// middle of the *next* request and are read as answers to it - and the
+    /// files they name have since been deleted or written over, which is a
+    /// FileNotFoundException, a dead reading and no sound at all.
+    /// </summary>
+    [JsonPropertyName("id")]
+    public string Id { get; init; } = string.Empty;
+
     [JsonPropertyName("voiceId")]
     public string? VoiceId { get; init; }
 
@@ -96,6 +110,11 @@ internal sealed class SidecarReply
     /// <summary>"ready", "clip", "designed", "progress", "done" or "error".</summary>
     [JsonPropertyName("type")]
     public string Type { get; init; } = string.Empty;
+
+    /// <summary>The request this answers. Empty on anything the sidecar says of
+    /// its own accord, which the host judges on its own terms.</summary>
+    [JsonPropertyName("id")]
+    public string Id { get; init; } = string.Empty;
 
     [JsonPropertyName("version")]
     public int Version { get; init; }

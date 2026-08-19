@@ -42,6 +42,7 @@ internal sealed class VoiceEngine : IDisposable
     private readonly string _workingDirectory;
     private readonly TimeSpan _firstWord;
     private ISidecarChannel? _channel;
+    private int _requests;
     private string _detail = string.Empty;
     private string? _fault;
 
@@ -92,7 +93,8 @@ internal sealed class VoiceEngine : IDisposable
         // happening and it is not measurable.
         progress?.Report(new VoiceEnginePrepare { Step = "starting" });
 
-        await SendAsync(new SidecarRequest { Op = "status" }, cancellationToken);
+        var id = NextId();
+        await SendAsync(new SidecarRequest { Op = "status", Id = id }, cancellationToken);
 
         // Armed only for the first reply; cancelled the moment one arrives.
         using var mute = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -104,7 +106,7 @@ internal sealed class VoiceEngine : IDisposable
             SidecarReply? reply;
             try
             {
-                reply = await ReadAsync(heard ? cancellationToken : mute.Token);
+                reply = await ReadForAsync(id, heard ? cancellationToken : mute.Token);
             }
             catch (OperationCanceledException) when (!heard && !cancellationToken.IsCancellationRequested)
             {
@@ -171,16 +173,18 @@ internal sealed class VoiceEngine : IDisposable
     {
         await EnsureReadyAsync(cancellationToken);
 
+        var id = NextId();
         await SendAsync(new SidecarRequest
         {
             Op = "design",
+            Id = id,
             VoiceId = brief.VoiceId,
             Description = brief.Description,
             SampleLines = [.. brief.SampleLines],
             Language = brief.Language
         }, cancellationToken);
 
-        while (await ReadAsync(cancellationToken) is { } reply)
+        while (await ReadForAsync(id, cancellationToken) is { } reply)
         {
             if (reply.Type == "progress")
                 continue;
@@ -228,9 +232,11 @@ internal sealed class VoiceEngine : IDisposable
             voices[voiceId] = name;
         }
 
+        var id = NextId();
         await SendAsync(new SidecarRequest
         {
             Op = "render",
+            Id = id,
             Language = request.Language,
             Rate = request.Rate,
             Voices = voices,
@@ -248,7 +254,7 @@ internal sealed class VoiceEngine : IDisposable
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            var reply = await ReadAsync(cancellationToken);
+            var reply = await ReadForAsync(id, cancellationToken);
             if (reply == null)
             {
                 // The sidecar died mid-chapter. The host stops at the last good
@@ -318,6 +324,45 @@ internal sealed class VoiceEngine : IDisposable
         if (_channel == null)
             throw new InvalidOperationException("the speech engine is not running");
         await _channel.SendAsync(JsonSerializer.Serialize(request, Json), cancellationToken);
+    }
+
+    /// <summary>The next id, unique for the life of this engine.</summary>
+    private string NextId() => (++_requests).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The next reply that belongs to <paramref name="id"/>.
+    ///
+    /// Anything stamped with another request is a leftover from a reading that
+    /// was stopped, still arriving because the sidecar cannot be interrupted
+    /// inside the model. It is dropped here rather than at the call sites, so
+    /// no caller can forget - and a clip from it is deleted rather than left to
+    /// fill the working directory for the rest of the session.
+    /// </summary>
+    private async Task<SidecarReply?> ReadForAsync(string id, CancellationToken cancellationToken)
+    {
+        while (await ReadAsync(cancellationToken) is { } reply)
+        {
+            if (reply.Id.Length == 0 || reply.Id == id)
+                return reply;
+            Discard(reply);
+        }
+        return null;
+    }
+
+    /// <summary>Throws away a clip nobody asked for any more.</summary>
+    private void Discard(SidecarReply reply)
+    {
+        if (reply.File == null)
+            return;
+        try
+        {
+            var path = Path.Combine(_workingDirectory, Path.GetFileName(reply.File));
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     private async Task<SidecarReply?> ReadAsync(CancellationToken cancellationToken)

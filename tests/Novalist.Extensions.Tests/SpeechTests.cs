@@ -709,4 +709,53 @@ public sealed class SpeechTests : IDisposable
 
         public void Dispose() => Stop();
     }
+
+    [Fact]
+    public async Task RepliesFromAReadingThatWasStopped_AreNotReadAsAnswersToTheNextOne()
+    {
+        // The failure this ends: the sidecar cannot be interrupted inside the
+        // model, so a stopped reading goes on being spoken. Its replies arrived
+        // in the middle of the next request, naming files that had since been
+        // deleted or written over - FileNotFoundException, a dead reading, and
+        // no sound at all, every time Play was pressed.
+        var stale = Path.Combine(_work, "clip-stale.wav");
+        await File.WriteAllBytesAsync(stale, [1, 2, 3]);
+        await File.WriteAllBytesAsync(Path.Combine(_work, "clip-live.wav"), [4, 5, 6]);
+
+        var channel = new FakeChannel([
+            Ready(),
+            // A leftover from request 1, arriving while request 2 is listening.
+            JsonSerializer.Serialize(
+                new { type = "clip", id = "1", key = "old", file = "clip-stale.wav", durationMs = 10.0 }),
+            JsonSerializer.Serialize(
+                new { type = "clip", id = "2", key = "new", file = "clip-live.wav", durationMs = 20.0 }),
+            JsonSerializer.Serialize(new { type = "done", id = "2" })
+        ]);
+        var engine = Engine(channel);
+        await engine.PrepareAsync(null);
+
+        var clips = new List<NarrationClip>();
+        await foreach (var clip in engine.RenderAsync(Request()))
+            clips.Add(clip);
+
+        var only = Assert.Single(clips);
+        Assert.Equal("new", only.Key);
+        Assert.Null(only.Error);
+        // And the abandoned clip is cleaned up rather than left to fill the
+        // working directory for the rest of the session.
+        Assert.False(File.Exists(stale));
+    }
+
+    [Fact]
+    public async Task EveryRequestIsStamped_SoARepliesOwnerIsNeverInDoubt()
+    {
+        var channel = new FakeChannel([Ready()]);
+        var engine = Engine(channel);
+
+        await engine.PrepareAsync(null);
+
+        var sent = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(channel.Sent[0]);
+        Assert.NotNull(sent);
+        Assert.False(string.IsNullOrEmpty(sent!["id"].GetString()));
+    }
 }
