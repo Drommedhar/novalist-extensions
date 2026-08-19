@@ -189,7 +189,7 @@ internal sealed class VoiceEngine : IDisposable
             if (reply.Type == "progress")
                 continue;
             if (reply.Type == "error")
-                throw new InvalidOperationException(reply.Error ?? "design failed");
+                throw new InvalidOperationException(reply.Error ?? "design-failed");
             if (reply.Type != "designed" || reply.File == null)
                 continue;
 
@@ -204,7 +204,11 @@ internal sealed class VoiceEngine : IDisposable
             };
         }
 
-        throw new InvalidOperationException("the speech sidecar stopped while designing");
+        // A code rather than a sentence: the host puts this in front of the
+        // writer, and "InvalidOperationException" told nobody anything. The
+        // sidecar reports its own failures as the exception's type name, so
+        // whatever arrives here is already safe to show.
+        throw new InvalidOperationException("sidecar-exited-while-designing");
     }
 
     /// <summary>
@@ -316,13 +320,13 @@ internal sealed class VoiceEngine : IDisposable
         if (!IsReady || _channel is not { IsRunning: true })
             await PrepareAsync(null, cancellationToken);
         if (!IsReady)
-            throw new InvalidOperationException(_fault ?? "the speech engine is not ready");
+            throw new InvalidOperationException(_fault ?? "engine-not-ready");
     }
 
     private async Task SendAsync(SidecarRequest request, CancellationToken cancellationToken)
     {
         if (_channel == null)
-            throw new InvalidOperationException("the speech engine is not running");
+            throw new InvalidOperationException("engine-not-running");
         await _channel.SendAsync(JsonSerializer.Serialize(request, Json), cancellationToken);
     }
 
