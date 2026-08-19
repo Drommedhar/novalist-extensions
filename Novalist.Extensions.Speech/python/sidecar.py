@@ -230,6 +230,27 @@ def seed_from(text: str) -> int:
     return int.from_bytes(digest[:4], "big")
 
 
+def native_hint(tag: str | None) -> str:
+    """Tells the designer which language this voice speaks natively.
+
+    The designer takes accent as part of its instruction - its own examples say
+    things like "in standard American English" - and it has no language
+    argument at all. Left unsaid, a German line came back read by an English
+    speaker, and because the delivery model clones accent along with timbre,
+    that accent was then baked into every line of the book.
+
+    The names come from the delivery model's own table, so the two always agree
+    about which languages exist.
+    """
+    from chatterbox import SUPPORTED_LANGUAGES
+
+    code = language_id(tag)
+    name = SUPPORTED_LANGUAGES.get(code)
+    if not name or code == "en":
+        return ""
+    return f" The speaker is a native {name} speaker with no foreign accent."
+
+
 def load_designer(engine: Engine) -> None:
     """Brings up the voice designer, once.
 
@@ -305,7 +326,8 @@ def do_design(engine: Engine, work: str, request: dict[str, Any]) -> None:
     )
     spoken = spoken.strip()[:200]
 
-    instruction = brief or "A clear, neutral speaking voice at an even tempo."
+    instruction = (brief or "A clear, neutral speaking voice at an even tempo.")
+    instruction += native_hint(request.get("language"))
 
     # Seeded from the brief, so asking for the same voice twice gives the same
     # voice. Design is otherwise non-deterministic, and a character who sounded

@@ -21,6 +21,10 @@ That separation is the whole point. A character is one identity and many perform
 
 Write *"a calm woman's voice, middle aged, unhurried and warm"* and that is what you get. It runs once per character, on your own machine, in a couple of seconds on a graphics card.
 
+It is **not reliable per attempt**. Measured over repeated designs of the same description, roughly one in five came back as the wrong sort of voice altogether, and a brief asking for an old man produced a woman two times in three. That is why Novalist plays a designed voice and asks before keeping it, and why re-designing is a supported thing rather than an admission of failure.
+
+The brief is also where the accent is set. The designer takes no language argument at all, so the book's language is named in the instruction — "the speaker is a native German speaker with no foreign accent" — because the delivery model clones accent along with timbre, and an English-accented reference makes an English-accented German audiobook.
+
 **Delivery** is [Chatterbox](https://github.com/resemble-ai/chatterbox) (Resemble AI), which speaks each line in that stored voice and takes an emotional intensity per utterance, separately from the timbre. The multilingual checkpoint, so your book is read in the language you wrote it in.
 
 The split does more than divide labour: the designed clip fixes *who* is speaking, and delivery decides *what language* they speak and *how they feel*. A voice designed from an English description reads a German novel in German, in that voice.
