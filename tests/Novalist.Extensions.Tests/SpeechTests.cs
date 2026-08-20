@@ -746,12 +746,19 @@ public sealed class SpeechTests : IDisposable
 
     /// <summary>The locale files, found by walking up from the test assembly -
     /// they are not embedded, because the host reads them off disk.</summary>
+    /// <remarks>
+    /// "Locales" with the capital the folder actually has. Spelled in lower case
+    /// this found it on Windows and nowhere else, so the check ran green on the
+    /// machine it was written on and threw on the build machine - where the run
+    /// that packages a release also runs, which is a release that does not
+    /// happen over a folder name.
+    /// </remarks>
     private static string LocalesDir()
     {
         var at = new DirectoryInfo(AppContext.BaseDirectory);
         while (at != null)
         {
-            var wanted = Path.Combine(at.FullName, "Novalist.Extensions.Speech", "locales");
+            var wanted = Path.Combine(at.FullName, "Novalist.Extensions.Speech", "Locales");
             if (Directory.Exists(wanted))
                 return wanted;
             at = at.Parent;
