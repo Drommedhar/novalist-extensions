@@ -5,7 +5,7 @@
   "version": "2.0.1",
   "author": "Novalist Team",
   "entryAssembly": "Novalist.Extensions.Speech.dll",
-  "minHostVersion": "3.0.0",
+  "minHostVersion": "3.2.0",
   "maxHostVersion": "",
   "dependencies": [],
   "tags": [
