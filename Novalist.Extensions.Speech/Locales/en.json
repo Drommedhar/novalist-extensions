@@ -8,6 +8,7 @@
   "speech.step.downloading": "Downloading — this is the long part",
   "speech.step.installed": "Environment ready",
   "speech.step.loadingModel": "Loading the speech model",
+  "speech.step.downloadingModel": "Downloading the speech model",
   "speech.step.ready": "Ready",
   "speech.step.python": "Looking for Python",
   "speech.step.installing": "Installing",
@@ -17,5 +18,8 @@
     "noAnswer": "The speech engine started but never answered. Close Novalist and prepare it again; if it keeps happening, delete the extension's folder in your application data so it can rebuild."
   },
   "speech.step.fetchingPython": "Fetching a Python for the speech models",
-  "speech.pythonFetchFailed": "A Python for the speech models could not be downloaded. Check the connection and press Prepare again."
+  "speech.pythonFetchFailed": "A Python for the speech models could not be downloaded. Check the connection and press Prepare again.",
+  "speech.settings.title": "Speech downloads",
+  "speech.settings.hfToken": "Hugging Face token (optional)",
+  "speech.settings.hfTokenHelp": "Used only to authenticate model downloads and avoid anonymous Hub rate limits. It is stored in this extension's private application-data folder."
 }

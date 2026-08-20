@@ -1,19 +1,8 @@
-# What the sidecar needs.
-#
-# voxcpm pulls its own torch, so torch is deliberately not pinned here: the
-# right build depends on the machine's card, and pinning one would install a CPU
-# build where a GPU one would do. The environment builder fetches the CUDA build
-# afterwards when there is a card to fetch it for.
-#
-# One package, because the engine is one model. It designs a voice from a
-# description and clones that clip for every line afterwards, which is what
-# keeps the timbre the writer approved and the timbre they hear the same thing.
-#
-# The model wants Python 3.10 to 3.12 and CUDA 12 or newer; the environment
-# builder asks for an interpreter in that range rather than the newest one on
-# the machine.
-voxcpm>=2.0
+# Qwen's official package contains both the VoiceDesign and Base clone APIs.
+# Pin the adapter-facing API: an unbounded model package can change method
+# signatures or sampling defaults underneath an installed extension.
+qwen-tts==0.1.1
 
-# The sidecar writes its own WAV files rather than taking a dependency on a
-# sound library to do it.
-numpy
+# qwen-tts already depends on librosa, soundfile, torch and torchaudio. The
+# environment builder replaces PyPI's CPU torch with the matching CUDA wheel on
+# NVIDIA machines after this file is installed.

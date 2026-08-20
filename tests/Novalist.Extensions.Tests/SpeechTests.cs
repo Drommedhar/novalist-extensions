@@ -1,6 +1,8 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Novalist.Extensions.Speech;
+using Novalist.Sdk.Hooks;
+using Novalist.Sdk.Models;
 using Novalist.Sdk.Models.Narration;
 using Xunit;
 
@@ -10,7 +12,7 @@ namespace Novalist.Extensions.Tests;
 /// Covers the speech engine without a model on the machine.
 ///
 /// Everything that decides anything is in <c>VoiceEngine</c>: what is asked and
-/// in what order, what the sidecar is told about the emotion, what happens when
+/// in what order, what the sidecar is told about the voice, what happens when
 /// a line fails and what happens when the sidecar dies part way through a
 /// chapter. A test that needed torch and six gigabytes of weights is a test
 /// nobody runs, so the process is a fake and the decisions are real.
@@ -98,7 +100,7 @@ public sealed class SpeechTests : IDisposable
 
     /// <summary>The protocol the sidecar that ships speaks. A reply carrying
     /// any other number is a stale sidecar and is refused rather than used.</summary>
-    private const int SidecarProtocolVersion = 2;
+    private const int SidecarProtocolVersion = 3;
 
     private VoiceEngine Engine(params string[] replies)
         => new(() => new FakeChannel(replies), _work);
@@ -106,7 +108,7 @@ public sealed class SpeechTests : IDisposable
     private VoiceEngine Engine(FakeChannel channel) => new(() => channel, _work);
 
     private static string Ready(bool ready = true, int version = SidecarProtocolVersion) => JsonSerializer.Serialize(
-        new { type = "ready", version, ready, detail = "openbmb/VoxCPM2 on cuda" });
+        new { type = "ready", version, ready, detail = "Qwen3-TTS VoiceDesign + Base on cuda" });
 
     /// <summary>Writes a clip where the sidecar would have, and names it.</summary>
     private string Clip(string name, string key, double durationMs = 250)
@@ -131,7 +133,7 @@ public sealed class SpeechTests : IDisposable
         await engine.PrepareAsync(new Progress<VoiceEnginePrepare>(p => steps.Add(p.Step)));
 
         Assert.True(engine.IsReady);
-        Assert.Equal("openbmb/VoxCPM2 on cuda", engine.Detail);
+        Assert.Equal("Qwen3-TTS VoiceDesign + Base on cuda", engine.Detail);
         Assert.Contains("loading-model", steps);
         Assert.Contains("ready", steps);
     }
@@ -192,7 +194,7 @@ public sealed class SpeechTests : IDisposable
         var status = engine.Status();
 
         Assert.True(status.IsReady);
-        Assert.Equal("openbmb/VoxCPM2 on cuda", status.Detail);
+        Assert.Equal("Qwen3-TTS VoiceDesign + Base on cuda", status.Detail);
         Assert.Null(status.Error);
     }
 
@@ -205,7 +207,11 @@ public sealed class SpeechTests : IDisposable
         var channel = new FakeChannel([
             Ready(),
             JsonSerializer.Serialize(
-                new { type = "designed", key = "mira", file = "design-1.wav", sampleRate = 24000 })
+                new
+                {
+                    type = "designed", key = "mira", file = "design-1.wav",
+                    text = "You are late,", sampleRate = 24000
+                })
         ]);
         var engine = Engine(channel);
         await engine.PrepareAsync(null);
@@ -221,12 +227,14 @@ public sealed class SpeechTests : IDisposable
 
         Assert.Equal("mira", designed.VoiceId);
         Assert.Equal([1, 2, 3, 4], designed.ReferenceAudio);
+        Assert.Equal("You are late,", designed.ReferenceText);
         Assert.Equal(24000, designed.SampleRate);
         // The brief went across as the instrument, with no emotion in it - the
         // host stripped that before it ever reached here.
         var asked = channel.Sent.Last();
         Assert.Contains("\"op\":\"design\"", asked);
         Assert.Contains("wiry", asked);
+        Assert.DoesNotContain("sampleLines", asked);
         // And the scratch file is gone: the host has its own store.
         Assert.False(File.Exists(Path.Combine(_work, "design-1.wav")));
     }
@@ -255,7 +263,7 @@ public sealed class SpeechTests : IDisposable
     // ── Rendering ──
 
     [Fact]
-    public async Task Render_SendsTheDirectionBesideTheWordsAndNeverInsideThem()
+    public async Task Render_SendsPlainProseAndTheExactReferenceTranscript()
     {
         var channel = new FakeChannel([
             Ready(),
@@ -272,10 +280,12 @@ public sealed class SpeechTests : IDisposable
         var asked = JsonDocument.Parse(channel.Sent.Last()).RootElement;
         var segment = asked.GetProperty("segments")[0];
         Assert.Equal("You are late,", segment.GetProperty("text").GetString());
-        Assert.Equal("angry", segment.GetProperty("emotion").GetString());
-        Assert.True(segment.GetProperty("vector").GetProperty("angry").GetDouble() > 0);
-        // The words carry none of it.
-        Assert.DoesNotContain("angry", segment.GetProperty("text").GetString()!);
+        Assert.False(segment.TryGetProperty("emotion", out _));
+        Assert.False(segment.TryGetProperty("vector", out _));
+        Assert.False(segment.TryGetProperty("instruction", out _));
+        Assert.Equal(
+            "This is the exact reference.",
+            asked.GetProperty("voiceTexts").GetProperty("mira-voice").GetString());
 
         var only = Assert.Single(clips);
         Assert.Equal("d:1", only.Key);
@@ -299,59 +309,6 @@ public sealed class SpeechTests : IDisposable
         Assert.Equal(
             "voice-mira-voice.wav",
             asked.GetProperty("voices").GetProperty("mira-voice").GetString());
-    }
-
-    [Fact]
-    public async Task Render_WritesTheClipTheWriterPointedAtAndNamesItBesideTheLine()
-    {
-        // "Like that line" was a dropdown, a store and an RPC that reached no
-        // engine: the writer picked a delivery, pressed apply, and heard exactly
-        // what they heard before, with nothing anywhere saying why.
-        var channel = new FakeChannel([Ready(), JsonSerializer.Serialize(new { type = "done" })]);
-        var engine = Engine(channel);
-        await engine.PrepareAsync(null);
-
-        await foreach (var _ in engine.RenderAsync(Request(like: [4, 5, 6]))) { }
-
-        var asked = JsonDocument.Parse(channel.Sent.Last()).RootElement;
-        var named = asked.GetProperty("segments")[0].GetProperty("likeThis").GetString();
-        Assert.NotNull(named);
-        Assert.True(File.Exists(Path.Combine(_work, named!)));
-        Assert.Equal(new byte[] { 4, 5, 6 }, File.ReadAllBytes(Path.Combine(_work, named!)));
-    }
-
-    [Fact]
-    public async Task Render_ALineWithNothingToSoundLikeCarriesNoClipAtAll()
-    {
-        // Which is almost every line. A name here would send the sidecar looking
-        // for a file that was never written.
-        var channel = new FakeChannel([Ready(), JsonSerializer.Serialize(new { type = "done" })]);
-        var engine = Engine(channel);
-        await engine.PrepareAsync(null);
-
-        await foreach (var _ in engine.RenderAsync(Request())) { }
-
-        var segment = JsonDocument.Parse(channel.Sent.Last()).RootElement
-            .GetProperty("segments")[0];
-        Assert.False(segment.TryGetProperty("likeThis", out var named) && named.ValueKind != JsonValueKind.Null);
-    }
-
-    [Fact]
-    public async Task Render_TwoLinesToldToSoundLikeTheSameClipShareOneFile()
-    {
-        // Named by the audio rather than by the line, so directing a whole
-        // argument "like that" writes one file instead of thirty copies of it.
-        var channel = new FakeChannel([Ready(), JsonSerializer.Serialize(new { type = "done" })]);
-        var engine = Engine(channel);
-        await engine.PrepareAsync(null);
-
-        await foreach (var _ in engine.RenderAsync(Request(like: [4, 5, 6], lines: 2))) { }
-
-        var segments = JsonDocument.Parse(channel.Sent.Last()).RootElement.GetProperty("segments");
-        Assert.Equal(
-            segments[0].GetProperty("likeThis").GetString(),
-            segments[1].GetProperty("likeThis").GetString());
-        Assert.Single(Directory.GetFiles(_work, "like-*.wav"));
     }
 
     [Fact]
@@ -483,7 +440,7 @@ public sealed class SpeechTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(
             Path.Combine(root, OperatingSystem.IsWindows() ? "Scripts" : "bin", "x"))!);
         File.WriteAllText(Path.Combine(root, "installed.txt"), "whatever was there before");
-        File.WriteAllText(requirements, "chatterbox-tts>=0.1.7\n");
+        File.WriteAllText(requirements, "qwen-tts==0.1.0\n");
 
         var python = new PythonEnvironment(root);
         // Pretend the interpreter is there; what is being tested is the verdict,
@@ -501,7 +458,7 @@ public sealed class SpeechTests : IDisposable
         var root = Path.Combine(_work, "env2");
         var requirements = Path.Combine(_work, "requirements2.txt");
         Directory.CreateDirectory(root);
-        File.WriteAllText(requirements, "voxcpm>=2.0\nnumpy\n");
+        File.WriteAllText(requirements, "qwen-tts==0.1.1\nnumpy\n");
 
         var python = new PythonEnvironment(root);
         var interpreter = python.VenvPython;
@@ -516,7 +473,7 @@ public sealed class SpeechTests : IDisposable
 
         // And an edit to the file is a different recipe, so somebody who changed
         // theirs for their own card gets it installed rather than ignored.
-        File.WriteAllText(requirements, "voxcpm>=2.0\nnumpy\ntorch==2.9.1\n");
+        File.WriteAllText(requirements, "qwen-tts==0.1.1\nnumpy\ntorch==2.9.1\n");
         Assert.False(python.IsBuiltFor(requirements));
     }
 
@@ -548,7 +505,7 @@ public sealed class SpeechTests : IDisposable
         Assert.True(File.Exists(Path.Combine(directory, "sidecar.py")));
         Assert.True(File.Exists(Path.Combine(directory, "requirements.txt")));
         Assert.Contains(
-            "voxcpm", File.ReadAllText(Path.Combine(directory, "requirements.txt")));
+            "qwen-tts==0.1.1", File.ReadAllText(Path.Combine(directory, "requirements.txt")));
         Assert.Contains(
             "PROTOCOL_VERSION", File.ReadAllText(Path.Combine(directory, "sidecar.py")));
     }
@@ -615,26 +572,36 @@ public sealed class SpeechTests : IDisposable
 
         Assert.Equal("com.novalist.speech", extension.Id);
         Assert.True(extension.Features.HasFlag(VoiceEngineFeatures.DesignFromDescription));
-        Assert.True(extension.Features.HasFlag(VoiceEngineFeatures.EmotionVector));
+        Assert.True(extension.Features.HasFlag(VoiceEngineFeatures.EmotionInferred));
         Assert.True(extension.Features.HasFlag(VoiceEngineFeatures.Streaming));
         Assert.True(extension.Features.HasFlag(VoiceEngineFeatures.RunsOnCpu));
-        // No cloning: there is no recording to clone from, which is also what
-        // keeps a real person's voice out of this entirely.
+        // Base clones the reference the design checkpoint created internally,
+        // but the extension deliberately offers no user-recording clone path.
         Assert.False(extension.Features.HasFlag(VoiceEngineFeatures.CloneFromSample));
-        // And it does not claim to read affect off the script: it performs what
-        // the writer directed, which is the point of being able to overrule a
-        // line.
-        Assert.False(extension.Features.HasFlag(VoiceEngineFeatures.EmotionInferred));
-        // The model takes its direction as a phrase in front of the words, so
-        // the adapter builds that phrase from a closed vocabulary of its own. A
-        // sentence assembled out of the writer's prose must never reach it, so
-        // being sent one is worse than not being offered one.
+        Assert.False(extension.Features.HasFlag(VoiceEngineFeatures.EmotionVector));
         Assert.False(extension.Features.HasFlag(VoiceEngineFeatures.EmotionInstruction));
-        // Every segment is a separate call with nothing carried across. Claiming
-        // otherwise told the host to skip the fade that takes the click off each
-        // join - a promise that made exported chapters worse and nothing better.
+        Assert.False(extension.Features.HasFlag(VoiceEngineFeatures.EmotionReference));
+        // Several sentences are grouped into each call, but state is not carried
+        // from one model call to the next, so the host must still smooth joins.
         Assert.False(extension.Features.HasFlag(VoiceEngineFeatures.ContinuousContext));
     }
+
+    [Fact]
+    public void TheExtension_OffersAnOptionalMaskedHuggingFaceToken()
+    {
+        var settings = Assert.IsAssignableFrom<ISettingsSchemaContributor>(new SpeechExtension());
+
+        var field = Assert.Single(settings.GetSettingsSchema().Fields);
+
+        Assert.Equal("huggingFaceToken", field.Key);
+        Assert.Equal(SettingsFieldType.Password, field.Type);
+        Assert.Equal(string.Empty, field.Value);
+        Assert.Contains("rate", field.Help!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AHubToken_IsTrimmedWithoutEverBeingParsedOrLogged()
+        => Assert.Equal("hf_secret", SpeechExtension.NormalizeHubToken("  hf_secret\r\n"));
 
     [Theory]
     [InlineData("no-python")]
@@ -663,6 +630,7 @@ public sealed class SpeechTests : IDisposable
     [InlineData("downloading")]
     [InlineData("installed")]
     [InlineData("importing")]
+    [InlineData("downloading-model")]
     [InlineData("installing")]
     [InlineData("looking-for-python")]
     [InlineData("loading-model")]
@@ -691,7 +659,7 @@ public sealed class SpeechTests : IDisposable
     [InlineData("Using cached numpy-1.26.4.whl", "Using cached numpy-1.26.4.whl", null)]
     // pip explains where a dependency came from with the whole requirements
     // path. The package is what changes and what anybody reads.
-    [InlineData("Collecting torch==2.6.0 (from chatterbox-tts>=0.1.7->-r C:/Users/x/reqs.txt (line 12))",
+    [InlineData("Collecting torch==2.6.0 (from qwen-tts==0.1.1->-r C:/Users/x/reqs.txt (line 12))",
         "Collecting torch==2.6.0", null)]
     // Noise nobody needs to read.
     [InlineData("Requirement already satisfied: idna", null, null)]
@@ -715,14 +683,8 @@ public sealed class SpeechTests : IDisposable
     // The versions the speech stack has wheels for.
     [InlineData("Python 3.10.14", true)]
     [InlineData("Python 3.12.7", true)]
-    // The model states 3.10 to 3.12 and there is no wheel above that. This was
-    // allowed, and on a machine with a current Python it picked exactly the
-    // interpreter the install then died on - after several minutes and a wall
-    // of pip output rather than one sentence.
-    [InlineData("Python 3.13.1", false)]
-    // The commonest failure there is: the newest release is always the one
-    // somebody just installed and always the one torch does not support yet. A
-    // venv builds on it happily and the install dies seconds later.
+    [InlineData("Python 3.13.1", true)]
+    // Not declared supported by the pinned Qwen stack yet.
     [InlineData("Python 3.14.6", false)]
     [InlineData("Python 3.15.0", false)]
     // And too old to be worth trying.
@@ -819,14 +781,12 @@ public sealed class SpeechTests : IDisposable
     }
 
     [Fact]
-    public void TheEngine_TakesAClipTheWriterPointedAtAsADirection()
+    public void TheEngine_DoesNotSwapItsIdentityReferencePerLine()
     {
-        // The host had built this whole path - a dropdown of lines already
-        // heard, a store, an RPC - and no engine claimed the flag, so picking a
-        // line and pressing apply changed nothing at all and said nothing about
-        // it. This model is unusually well suited to it: it clones its whole
-        // delivery from its reference, prosody included.
-        Assert.True(new SpeechExtension().Features.HasFlag(VoiceEngineFeatures.EmotionReference));
+        // The approved reference is both identity and ICL context. Replacing it
+        // with a rendered line to imitate that line's prosody would also replace
+        // the conditioning chosen to keep the speaker stable.
+        Assert.False(new SpeechExtension().Features.HasFlag(VoiceEngineFeatures.EmotionReference));
     }
 
     [Fact]
@@ -849,16 +809,18 @@ public sealed class SpeechTests : IDisposable
         Assert.Equal("not-initialised", status.Error);
     }
 
-    /// <param name="like">A clip the writer pointed at and said "like that",
-    /// which is null on almost every line there has ever been.</param>
     /// <param name="lines">How many lines the run is, all in the one voice.</param>
-    private static NarrationRequest Request(byte[]? like = null, int lines = 1) => new()
+    private static NarrationRequest Request(int lines = 1) => new()
     {
         Language = "en",
         Rate = 1.0,
         Voices = new Dictionary<string, byte[]>(StringComparer.Ordinal)
         {
             ["mira-voice"] = [9, 9, 9]
+        },
+        VoiceReferenceTexts = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["mira-voice"] = "This is the exact reference."
         },
         Segments =
         [
@@ -873,8 +835,7 @@ public sealed class SpeechTests : IDisposable
                     Key = "angry",
                     Vector = new Dictionary<string, double> { ["angry"] = 0.9 },
                     Instruction = "Read this angry, as though snapped.",
-                    Source = "Verb",
-                    ReferenceAudio = like
+                    Source = "Verb"
                 }
             })
         ]

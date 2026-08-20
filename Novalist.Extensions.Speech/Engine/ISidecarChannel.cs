@@ -46,13 +46,19 @@ internal sealed class ProcessSidecarChannel : ISidecarChannel
     private readonly string _executable;
     private readonly string _script;
     private readonly string _workingDirectory;
+    private readonly string _huggingFaceToken;
     private Process? _process;
 
-    public ProcessSidecarChannel(string executable, string script, string workingDirectory)
+    public ProcessSidecarChannel(
+        string executable,
+        string script,
+        string workingDirectory,
+        string? huggingFaceToken = null)
     {
         _executable = executable;
         _script = script;
         _workingDirectory = workingDirectory;
+        _huggingFaceToken = huggingFaceToken ?? string.Empty;
     }
 
     public bool IsRunning => _process is { HasExited: false };
@@ -92,6 +98,16 @@ internal sealed class ProcessSidecarChannel : ISidecarChannel
         // somebody's novel.
         info.Environment["PYTHONUTF8"] = "1";
         info.Environment["PYTHONIOENCODING"] = "utf-8";
+        // Keep large model weights with the extension. Apart from making the
+        // disk estimate truthful, deleting the extension's data then removes
+        // the speech stack completely instead of leaving a second cache under
+        // the user's profile.
+        info.Environment["HF_HOME"] = Path.Combine(
+            Path.GetDirectoryName(_workingDirectory) ?? _workingDirectory, "models");
+        // Hugging Face reads this directly. It never enters a protocol message,
+        // command-line argument or diagnostic where it could be displayed.
+        if (_huggingFaceToken.Length > 0)
+            info.Environment["HF_TOKEN"] = _huggingFaceToken;
 
         _process = Process.Start(info)
             ?? throw new InvalidOperationException("the speech sidecar did not start");

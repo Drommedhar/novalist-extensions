@@ -21,13 +21,11 @@ internal sealed class PythonEnvironment
     /// <summary>
     /// The newest Python worth asking for.
     ///
-    /// A real ceiling rather than a preference: the speech model states Python
-    /// 3.10 to 3.12, and 3.13 has no wheel for it. The old value here was 13,
-    /// which on a machine with a current Python picked exactly the interpreter
-    /// the install then failed on - and failed with a wall of pip output rather
-    /// than with the one sentence that would have explained it.
+    /// Qwen-TTS publishes for Python 3.9 through 3.13. We keep 3.10 as the floor
+    /// because one of its pinned runtime dependencies requires it, and stop at
+    /// 3.13 until the upstream stack declares a newer interpreter supported.
     /// </summary>
-    private const int NewestSupportedMinor = 12;
+    private const int NewestSupportedMinor = 13;
 
     /// <summary>The oldest worth trying.</summary>
     private const int OldestSupportedMinor = 10;
@@ -332,9 +330,8 @@ internal sealed class PythonEnvironment
     /// into.
     ///
     /// A rule rather than a preference, now that an interpreter can be fetched
-    /// for a machine that has nothing suitable. The model publishes no wheel
-    /// above 3.12, and an interpreter outside the range builds a virtual
-    /// environment happily and then fails the install minutes later.
+    /// for a machine that has nothing suitable. It follows the supported Qwen
+    /// package classifiers while retaining the dependency-imposed 3.10 floor.
     /// </summary>
     internal static bool IsUsable(string versionOutput)
     {
@@ -376,7 +373,7 @@ internal sealed class PythonEnvironment
                 continue;
 
             var percent = PercentIn(trimmed);
-            // "Collecting torch==2.6.0 (from chatterbox-tts>=0.1.7->-r C:/Users/…)"
+            // "Collecting torch==2.6.0 (from qwen-tts==0.1.1->-r C:/Users/…)"
             // is four fifths path. The package is the part that changes and the
             // part anybody reads; the rest is pip explaining itself to itself.
             var at = trimmed.IndexOf(" (from ", StringComparison.Ordinal);

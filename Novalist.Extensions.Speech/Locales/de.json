@@ -8,6 +8,7 @@
   "speech.step.downloading": "Wird heruntergeladen — das dauert am längsten",
   "speech.step.installed": "Umgebung bereit",
   "speech.step.loadingModel": "Sprachmodell wird geladen",
+  "speech.step.downloadingModel": "Sprachmodell wird heruntergeladen",
   "speech.step.ready": "Bereit",
   "speech.step.python": "Python wird gesucht",
   "speech.step.installing": "Wird installiert",
@@ -17,5 +18,8 @@
     "noAnswer": "Die Sprachausgabe wurde gestartet, hat aber nie geantwortet. Schließen Sie Novalist und bereiten Sie sie erneut vor; falls das weiterhin auftritt, löschen Sie den Ordner der Erweiterung in Ihren Anwendungsdaten, damit sie neu aufgebaut wird."
   },
   "speech.step.fetchingPython": "Ein Python für die Sprachmodelle wird geholt",
-  "speech.pythonFetchFailed": "Ein Python für die Sprachmodelle konnte nicht heruntergeladen werden. Prüfen Sie die Verbindung und drücken Sie erneut auf Vorbereiten."
+  "speech.pythonFetchFailed": "Ein Python für die Sprachmodelle konnte nicht heruntergeladen werden. Prüfen Sie die Verbindung und drücken Sie erneut auf Vorbereiten.",
+  "speech.settings.title": "Sprachmodell-Downloads",
+  "speech.settings.hfToken": "Hugging-Face-Token (optional)",
+  "speech.settings.hfTokenHelp": "Wird nur zur Anmeldung bei Modell-Downloads und zur Vermeidung anonymer Hub-Limits verwendet. Es wird im privaten Anwendungsdatenordner dieser Erweiterung gespeichert."
 }

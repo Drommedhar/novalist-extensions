@@ -22,7 +22,7 @@ internal static class SidecarProtocol
     /// <summary>Bump when the message shape changes. The sidecar reports the
     /// version it speaks in its ready line, and a mismatch is a clear failure
     /// rather than a field silently missing.</summary>
-    public const int Version = 2;
+    public const int Version = 3;
 }
 
 /// <summary>A request to the sidecar.</summary>
@@ -54,11 +54,6 @@ internal sealed class SidecarRequest
     [JsonPropertyName("description")]
     public string? Description { get; init; }
 
-    /// <summary>A few lines the character actually speaks, for a design model
-    /// that can use them.</summary>
-    [JsonPropertyName("sampleLines")]
-    public string[]? SampleLines { get; init; }
-
     /// <summary>The number to draw a designed voice with, or null to draw a
     /// fresh one. Pinned by the writer when they want a voice back.</summary>
     [JsonPropertyName("seed")]
@@ -74,6 +69,11 @@ internal sealed class SidecarRequest
     /// extension writes them into the working directory before asking.</summary>
     [JsonPropertyName("voices")]
     public Dictionary<string, string>? Voices { get; init; }
+
+    /// <summary>The exact transcript paired with each reference clip. Qwen's
+    /// high-fidelity ICL clone requires both.</summary>
+    [JsonPropertyName("voiceTexts")]
+    public Dictionary<string, string>? VoiceTexts { get; init; }
 
     [JsonPropertyName("segments")]
     public SidecarSegment[]? Segments { get; init; }
@@ -94,31 +94,6 @@ internal sealed class SidecarSegment
     [JsonPropertyName("isDialogue")]
     public bool IsDialogue { get; init; }
 
-    /// <summary>The emotion as numbers, for the delivery model's own dimensions.
-    /// Empty when the host decided this engine should not be steered.</summary>
-    [JsonPropertyName("vector")]
-    public Dictionary<string, double> Vector { get; init; } = [];
-
-    /// <summary>The emotion as a sentence, for a model that takes one.</summary>
-    [JsonPropertyName("instruction")]
-    public string Instruction { get; init; } = string.Empty;
-
-    /// <summary>The emotion's name, always present, for logging and for a model
-    /// that takes a label.</summary>
-    [JsonPropertyName("emotion")]
-    public string Emotion { get; init; } = "neutral";
-
-    /// <summary>
-    /// A clip the writer pointed at and said "like that", by file name in the
-    /// working directory. Null on almost every line.
-    ///
-    /// A cloning model takes its whole delivery from its reference - the timbre
-    /// and the prosody together - so a line already performed the way the writer
-    /// wanted is a more exact direction than any word for it. It is the
-    /// character's own clip, so the identity does not move.
-    /// </summary>
-    [JsonPropertyName("likeThis")]
-    public string? LikeThis { get; init; }
 }
 
 /// <summary>One line back from the sidecar.</summary>
@@ -139,7 +114,7 @@ internal sealed class SidecarReply
     [JsonPropertyName("ready")]
     public bool Ready { get; init; }
 
-    /// <summary>What it is and where it runs - "openbmb/VoxCPM2 on cuda". Shown
+    /// <summary>What it is and where it runs - "Qwen3-TTS Base on cuda". Shown
     /// in settings and written to the log.</summary>
     [JsonPropertyName("detail")]
     public string Detail { get; init; } = string.Empty;
@@ -159,6 +134,10 @@ internal sealed class SidecarReply
     /// who likes it can ask for it again.</summary>
     [JsonPropertyName("seed")]
     public int? Seed { get; init; }
+
+    /// <summary>The exact words spoken in a designed reference clip.</summary>
+    [JsonPropertyName("text")]
+    public string Text { get; init; } = string.Empty;
 
     [JsonPropertyName("durationMs")]
     public double DurationMs { get; init; }

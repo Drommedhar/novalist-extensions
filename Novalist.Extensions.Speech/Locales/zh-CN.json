@@ -8,6 +8,7 @@
   "speech.step.downloading": "正在下载——这一步最久",
   "speech.step.installed": "环境已就绪",
   "speech.step.loadingModel": "正在加载语音模型",
+  "speech.step.downloadingModel": "正在下载语音模型",
   "speech.step.ready": "就绪",
   "speech.step.python": "正在查找 Python",
   "speech.step.installing": "正在安装",
@@ -17,5 +18,8 @@
     "noAnswer": "语音引擎已启动但始终没有响应。请关闭 Novalist 并重新准备；如果仍然如此，请删除应用数据中该扩展的文件夹，让它重新构建。"
   },
   "speech.step.fetchingPython": "正在获取用于语音模型的 Python",
-  "speech.pythonFetchFailed": "无法下载用于语音模型的 Python。请检查网络连接，然后再次点击“准备”。"
+  "speech.pythonFetchFailed": "无法下载用于语音模型的 Python。请检查网络连接，然后再次点击“准备”。",
+  "speech.settings.title": "语音模型下载",
+  "speech.settings.hfToken": "Hugging Face 令牌（可选）",
+  "speech.settings.hfTokenHelp": "仅用于验证模型下载并避免匿名 Hub 速率限制。令牌保存在此扩展的私有应用数据文件夹中。"
 }

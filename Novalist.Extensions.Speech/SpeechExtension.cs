@@ -1,5 +1,6 @@
 using Novalist.Sdk;
 using Novalist.Sdk.Hooks;
+using Novalist.Sdk.Models;
 using Novalist.Sdk.Models.Narration;
 using Novalist.Sdk.Services;
 
@@ -20,27 +21,28 @@ namespace Novalist.Extensions.Speech;
 /// <item><b>design</b> turns a description of a character into a voice, once,
 /// and what comes back is stored as audio because designing is not
 /// reproducible;</item>
-/// <item><b>delivery</b> performs each line in that fixed voice, with the
-/// emotion supplied per line as a parameter beside the words.</item>
+/// <item><b>delivery</b> turns that approved clip into a reusable clone prompt
+/// and infers each passage's performance from its words and punctuation.</item>
 /// </list>
 ///
 /// A character is therefore one identity and many performances - furious in
 /// chapter three, grieving in chapter twenty, recognisably the same person.
 ///
-/// Two stages, but <b>one model</b>. They were two, and that was the mistake:
-/// our pipeline designs a clip and then clones it for ever, so when the designer
-/// and the cloner are different models the timbre that was approved is not the
-/// timbre that comes back. No benchmark measures that seam, because no other
-/// pipeline has it. A model that does both has no seam to lose anything in.
+/// The checkpoints are the VoiceDesign and Base members of the same Qwen3-TTS
+/// family. This is Qwen's documented design-then-clone workflow for a character
+/// voice reused across many lines; both stages share its speech representation.
 ///
-/// <b>Nothing here opens a socket.</b> The models run on this machine, in a
-/// Python environment under the extension's own settings folder, and the only
-/// thing that ever reaches the network is the one-off download when the writer
-/// presses Prepare. Novalist's read-aloud promises that listening to your book
-/// sends nothing anywhere, and an engine is not entitled to break that on the
-/// application's behalf.
+/// <b>Narration opens no socket.</b> The models run on this machine, in a Python
+/// environment under the extension's own settings folder. The only network use
+/// is the model and package download the writer starts with Prepare. Novalist's
+/// read-aloud promises that listening to your book sends nothing anywhere, and
+/// an engine is not entitled to break that on the application's behalf.
 /// </summary>
-public sealed class SpeechExtension : IExtension, IVoiceEngineContributor, IDisposable
+public sealed class SpeechExtension :
+    IExtension,
+    IVoiceEngineContributor,
+    ISettingsSchemaContributor,
+    IDisposable
 {
     private IHostServices? _host;
     private IExtensionLocalization? _loc;
@@ -48,6 +50,8 @@ public sealed class SpeechExtension : IExtension, IVoiceEngineContributor, IDisp
     private VoiceEngine? _engine;
     private string? _fault;
     private string _sidecarDir = string.Empty;
+    private string _settingsRoot = string.Empty;
+    private string _huggingFaceToken = string.Empty;
 
     public string Id => "com.novalist.speech";
 
@@ -55,9 +59,9 @@ public sealed class SpeechExtension : IExtension, IVoiceEngineContributor, IDisp
 
     public string Description =>
         "Designs a voice for each character from their Codex entry and reads your book "
-        + "in it, with every line performed as the prose directs. Runs on your machine.";
+        + "in it, with delivery inferred naturally from the prose. Runs on your machine.";
 
-    public string Version => "1.0.0";
+    public string Version => "2.0.1";
 
     public string Author => "Novalist Team";
 
@@ -66,11 +70,17 @@ public sealed class SpeechExtension : IExtension, IVoiceEngineContributor, IDisp
         _host = host;
         _loc = host.GetLocalization(Id);
         var root = host.GetExtensionSettingsPath(Id);
+        _settingsRoot = root;
+        _huggingFaceToken = ReadHubToken(root);
         _sidecarDir = Path.Combine(root, "python");
         Unpack(_sidecarDir);
         _python = new PythonEnvironment(root);
         _engine = new VoiceEngine(
-            () => new ProcessSidecarChannel(_python.VenvPython, SidecarScript(), _python.WorkPath),
+            () => new ProcessSidecarChannel(
+                _python.VenvPython,
+                SidecarScript(),
+                _python.WorkPath,
+                _huggingFaceToken),
             _python.WorkPath);
     }
 
@@ -82,42 +92,102 @@ public sealed class SpeechExtension : IExtension, IVoiceEngineContributor, IDisp
         _engine = null;
     }
 
+    // ── ISettingsSchemaContributor ──────────────────────────────────
+
+    private const string HubTokenKey = "huggingFaceToken";
+
+    /// <summary>An optional authenticated Hub identity for model downloads.
+    /// Qwen's repositories are public, so this lifts anonymous rate limits but
+    /// is not required to prepare the engine.</summary>
+    public SettingsSchema GetSettingsSchema() => new()
+    {
+        Title = T("speech.settings.title", "Speech downloads"),
+        Fields =
+        [
+            new SettingsField
+            {
+                Key = HubTokenKey,
+                Label = T("speech.settings.hfToken", "Hugging Face token (optional)"),
+                Type = SettingsFieldType.Password,
+                Value = _huggingFaceToken,
+                Help = T(
+                    "speech.settings.hfTokenHelp",
+                    "Used only to authenticate model downloads and avoid anonymous Hub rate limits. "
+                    + "It is stored in this extension's private application-data folder.")
+            }
+        ]
+    };
+
+    public async Task ApplySettingsAsync(IReadOnlyDictionary<string, string> values)
+    {
+        if (!values.TryGetValue(HubTokenKey, out var value))
+            return;
+
+        var token = NormalizeHubToken(value);
+        if (string.Equals(token, _huggingFaceToken, StringComparison.Ordinal))
+            return;
+        if (_settingsRoot.Length == 0)
+            throw new InvalidOperationException("the speech extension is not initialised");
+
+        Directory.CreateDirectory(_settingsRoot);
+        var path = HubTokenPath(_settingsRoot);
+        if (token.Length == 0)
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        else
+        {
+            await File.WriteAllTextAsync(path, token);
+        }
+
+        _huggingFaceToken = token;
+        // A running sidecar inherited the old environment. Restart it so the
+        // next Prepare/resume uses the saved token.
+        _engine?.Stop();
+    }
+
+    internal static string NormalizeHubToken(string? token)
+        => string.Concat((token ?? string.Empty).Where(c => !char.IsWhiteSpace(c)));
+
+    private static string HubTokenPath(string root)
+        => Path.Combine(root, "huggingface-token.txt");
+
+    private static string ReadHubToken(string root)
+    {
+        try
+        {
+            var path = HubTokenPath(root);
+            return File.Exists(path) ? NormalizeHubToken(File.ReadAllText(path)) : string.Empty;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return string.Empty;
+        }
+    }
+
     // ── IVoiceEngineContributor ─────────────────────────────────────
 
-    public string EngineId => "com.novalist.speech.local";
+    public string EngineId => "com.novalist.speech.qwen3";
 
     public string EngineName => "Novalist Speech (local)";
 
     /// <summary>
     /// What this can be asked for.
     ///
-    /// <c>EmotionVector</c> and nothing else of the three, and both omissions
-    /// are deliberate corrections rather than gaps:
+    /// Qwen's Base clone receives the prose without direction markup and infers
+    /// tone, rhythm and affect from its semantics:
     ///
     /// <list type="bullet">
-    /// <item>Not <c>EmotionInstruction</c>. The model's direction slot is a
-    /// phrase in front of the words, so anything put there is one bad prompt
-    /// away from being read aloud. The adapter builds that phrase itself from a
-    /// closed vocabulary; a sentence assembled from the writer's own prose must
-    /// never reach it, so it is better not to be sent one. It was advertised,
-    /// built, sent and silently discarded, which cost the host the work of
-    /// composing it every line.</item>
-    /// <item>Not <c>ContinuousContext</c>. Each segment is a separate call with
-    /// nothing carried across, so identity and prosody do not survive a join.
-    /// Claiming otherwise told the host to skip the fade that removes the click
-    /// at every one of them - a promise that made exported chapters worse and
-    /// nothing better.</item>
-    /// <item><c>EmotionReference</c>, which this model is unusually well suited
-    /// to: it clones its whole delivery from a reference clip - the timbre and
-    /// the prosody together - so a line the writer has already heard performed
-    /// the way they wanted is a more exact direction than any word for it. The
-    /// host only ever offers clips in the same character's voice, so the
-    /// identity does not move when the delivery does. The host had built this
-    /// whole path and no engine claimed it, which meant a writer could pick a
-    /// line, press apply, and hear no difference at all.</item>
-    /// <item>Not <c>EmotionInferred</c>: this performs what it is directed to
-    /// perform rather than deciding for itself, which is the point of the writer
-    /// being able to overrule a line.</item>
+    /// <item><c>EmotionInferred</c>, so the host deliberately sends no vector or
+    /// instruction that could pull the cloned speaker away from the approved
+    /// identity.</item>
+    /// <item>Not <c>ContinuousContext</c>. Several adjacent sentences are
+    /// grouped into a passage, and the reusable identity prompt is applied to
+    /// every passage, but model state does not carry between calls. The host
+    /// therefore still smooths the remaining passage boundaries.</item>
+    /// <item>Not <c>EmotionReference</c>: swapping the clone reference per line
+    /// would swap the very conditioning used to hold the identity stable.</item>
     /// <item>No <c>CloneFromSample</c>: there is no recording to clone from, and
     /// an engine that accepted a call it cannot honour is worse than one that
     /// says so. That is also what keeps a real person's voice out of this
@@ -126,8 +196,7 @@ public sealed class SpeechExtension : IExtension, IVoiceEngineContributor, IDisp
     /// </summary>
     public VoiceEngineFeatures Features =>
         VoiceEngineFeatures.DesignFromDescription
-        | VoiceEngineFeatures.EmotionVector
-        | VoiceEngineFeatures.EmotionReference
+        | VoiceEngineFeatures.EmotionInferred
         | VoiceEngineFeatures.Streaming
         | VoiceEngineFeatures.RunsOnCpu;
 
@@ -287,6 +356,7 @@ public sealed class SpeechExtension : IExtension, IVoiceEngineContributor, IDisp
         "installing" => T("speech.step.installing", step),
         "installed" => T("speech.step.installed", step),
         "importing" => T("speech.step.importing", step),
+        "downloading-model" => T("speech.step.downloadingModel", step),
         "loading-model" => T("speech.step.loadingModel", step),
         "ready" => T("speech.step.ready", step),
         _ => step
@@ -342,7 +412,7 @@ public sealed class SpeechExtension : IExtension, IVoiceEngineContributor, IDisp
     /// depends on the machine's CUDA build, and a precise-looking number that is
     /// wrong is worse than an honest estimate.
     /// </summary>
-    private const long ApproximateDownloadBytes = 8L * 1024 * 1024 * 1024;
+    private const long ApproximateDownloadBytes = 16L * 1024 * 1024 * 1024;
 
     private VoiceEngine Engine()
         => _engine ?? throw new InvalidOperationException("the speech extension is not initialised");

@@ -1,8 +1,8 @@
 {
   "id": "com.novalist.speech",
   "name": "Speech",
-  "description": "Designs a voice for each character from their Codex entry and reads your book in it, with every line performed as the prose directs. Runs on your own machine and reaches no network except the one download you ask for.",
-  "version": "1.0.0",
+  "description": "Designs a reusable Qwen3-TTS voice for each character and reads your book with delivery inferred naturally from the prose. Runs on your own machine and reaches no network except the one download you ask for.",
+  "version": "2.0.1",
   "author": "Novalist Team",
   "entryAssembly": "Novalist.Extensions.Speech.dll",
   "minHostVersion": "3.0.0",

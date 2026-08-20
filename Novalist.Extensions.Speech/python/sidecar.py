@@ -1,140 +1,77 @@
-"""Novalist speech sidecar.
+"""Local Qwen3-TTS sidecar for Novalist.
 
-One JSON object per line on stdin, one per line on stdout. Audio never travels
-in a message: clips are written into the working directory and named back, and
-the extension reads the file. Anything the models print goes to stderr, which the
-host routes to the debugger only - a model that echoes its prompt must not be
-able to write a paragraph of somebody's novel into a log they might send us.
+The protocol is one UTF-8 JSON object per line over stdio. Audio is exchanged
+through files in the private working directory, never through JSON and never
+through a socket.
 
-One model, because the feature is one thing done twice.
+Qwen's documented character workflow has two checkpoints from one model family:
 
-  VoxCPM2 (OpenBMB, Apache-2.0) designs a speaker out of free-form text with no
-  reference recording anywhere - "eine ruhige Frau mittleren Alters" comes back
-  as a voice - and then clones that stored clip for every line the character
-  ever speaks.
+* VoiceDesign creates a short reference from an acoustic description.
+* Base turns that audio and its exact transcript into a reusable ICL clone
+  prompt, then reads ordinary prose in that voice.
 
-  It designs and it delivers. That is the whole reason it is here rather than a
-  better designer beside a better deliverer: our pipeline designs a clip once
-  and clones it for ever, and when the designer and the cloner are two models
-  the timbre that was designed is not the timbre that comes back. Nobody
-  benchmarks that seam because nobody else's pipeline has it. One model has no
-  seam.
-
-  It also speaks German, and thirty other languages, natively - which is what
-  lets the stored clip be in the book's own language. The accent a reading
-  carries is the accent of the clip it was cloned from, not of the language tag
-  it was sent, so a clip designed in the book's language is the only reliable
-  way to stop a German novel being read by an American.
-
-Local. This file opens no socket; the only network traffic is the one-off weight
-download huggingface_hub does on first load, which the writer started
-deliberately.
+The prose is sent without emotion tags. Qwen infers tone and prosody from the
+text itself; the fixed reference prompt is responsible only for identity. The
+design checkpoint is loaded only while designing and the clone checkpoint only
+while reading, so both fit on machines that cannot hold both at once.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
+import gc
 import hashlib
-import secrets
 import io
 import json
 import os
+import secrets
 import sys
+import time
 import traceback
 import wave
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
+
+DESIGN_MODEL = os.environ.get(
+    "NOVALIST_TTS_DESIGN_MODEL", "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign")
+CLONE_MODEL = os.environ.get(
+    "NOVALIST_TTS_CLONE_MODEL", "Qwen/Qwen3-TTS-12Hz-1.7B-Base")
+TEMPERATURE = float(os.environ.get("NOVALIST_TTS_TEMPERATURE", "0.9"))
+DESIGN_ATTEMPTS = 3
+
+CURRENT_ID = ""
 
 
 def _speak_utf8() -> None:
-    """Make the protocol UTF-8 at both ends, whatever the machine's locale is.
-
-    Python takes its standard streams from the system locale, which on a German
-    or Chinese Windows install is a code page - cp1252, cp936 - and not UTF-8.
-    The host writes UTF-8. Left alone, every umlaut and every Chinese character
-    in the manuscript arrives here as mojibake or as a decode error that kills
-    the read loop, and a reply carrying one cannot be written back at all.
-
-    A novel is exactly the payload this breaks, so it is set explicitly rather
-    than left to the environment.
-    """
+    """Use the same encoding as the .NET host on every operating system."""
     for stream in (sys.stdin, sys.stdout):
         try:
             stream.reconfigure(encoding="utf-8", errors="replace")
-        except (AttributeError, ValueError):  # pragma: no cover - very old Python
+        except (AttributeError, ValueError):  # pragma: no cover - old Python
             pass
 
 
 _speak_utf8()
 
-# Overridable, because a writer with a better checkpoint should not wait for us
-# to publish a release.
-MODEL = os.environ.get("NOVALIST_TTS_MODEL", "openbmb/VoxCPM2")
-
-# torch.compile needs Triton, which has no Windows build, and the compile step
-# fails there with an integer conversion error rather than degrading. Off by
-# default on Windows and on for everybody else, overridable either way.
-OPTIMIZE = os.environ.get(
-    "NOVALIST_TTS_OPTIMIZE", "0" if os.name == "nt" else "1") not in {"0", "false", "False"}
-
-# How firmly the model is held to the instruction. The model's own default.
-CFG_VALUE = float(os.environ.get("NOVALIST_TTS_CFG", "2.0"))
-
-# Diffusion steps per utterance. More is slower and slightly cleaner; this is
-# the model's own default and the point at which its published numbers were
-# measured.
-TIMESTEPS = int(os.environ.get("NOVALIST_TTS_TIMESTEPS", "10"))
-
-# The dimensions the host sends emotion in. It builds its vector in exactly
-# these, so reading it is a lookup rather than a guess at either end.
-EMOTION_DIMENSIONS = [
-    "happy",
-    "angry",
-    "sad",
-    "afraid",
-    "disgusted",
-    "melancholic",
-    "surprised",
-    "calm",
-]
-
-# The request being served, stamped onto everything said about it.
-#
-# A reading the writer stopped goes on being spoken - the model cannot be
-# interrupted mid-utterance - so its replies must be recognisable as belonging
-# to a request nobody is listening to any more. Without that they arrive in the
-# middle of the next request and are read as answers to it.
-CURRENT_ID = ""
-
 
 def emit(**payload: Any) -> None:
-    """One reply line. Flushed, because the host is waiting on it."""
+    """Write and flush one protocol reply."""
     payload.setdefault("id", CURRENT_ID)
     sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
     sys.stdout.flush()
 
 
 def note(message: str) -> None:
-    """Diagnostics, to stderr - never stdout, which is the protocol."""
+    """Diagnostics go to stderr; stdout belongs exclusively to the protocol."""
     sys.stderr.write(message + "\n")
     sys.stderr.flush()
 
 
 def keep_failure(work: str, what: str, message: str) -> None:
-    """Writes a failure down where somebody can read it afterwards.
-
-    The host routes this process's stderr to a debugger and nowhere else, on
-    purpose - a model can echo the words it was given, and a diagnostic log a
-    writer might send us must never carry a paragraph of their book. But that
-    left a failure with nothing behind it but the name of an exception type,
-    which is not enough to fix anything.
-
-    So it goes to a file beside the environment, on the writer's own machine,
-    never read by the application and never sent anywhere - the same place and
-    the same reasoning as install-failed.txt.
-    """
+    """Keep the full local error without putting manuscript text in a log."""
     try:
         path = os.path.join(os.path.dirname(os.path.abspath(work)), f"{what}-failed.txt")
         with io.open(path, "w", encoding="utf-8") as handle:
@@ -143,278 +80,92 @@ def keep_failure(work: str, what: str, message: str) -> None:
         pass
 
 
-# ── The style prefix ────────────────────────────────────────────────────────
-#
-# VoxCPM2 takes its direction as a parenthesised phrase in front of the words:
-# "(clipped and angry)Get out." That collides with the rule the whole design
-# rests on - a direction is a parameter and never enters the text - because an
-# in-band tag is one bad prompt away from the model reading the word "angry" out
-# loud in the middle of a sentence.
-#
-# The rule does not bend; the adapter absorbs it, which is exactly what the SDK
-# says an adapter is for. Two invariants make it safe:
-#
-#   1. Every phrase below is a fixed string in this file. Nothing the writer
-#      typed, and nothing derived from the manuscript, can reach the prefix. The
-#      host's own natural-language instruction is deliberately not used - the
-#      engine does not advertise EmotionInstruction, so it is never sent one.
-#
-#   2. A prefix is ALWAYS emitted, even for a neutral line. That is what stops
-#      the prose occupying the prefix slot: a sentence that legitimately opens
-#      with a bracket - "(He had never said so aloud.)" - is no longer the first
-#      thing the model sees, so it cannot be mistaken for direction.
-#
-# The vocabulary is deliberately small and plain. The model reads it as English
-# regardless of the book's language, which is what its own examples do.
-
-# What each dimension sounds like, quietly and then strongly. Two rungs rather
-# than a scale: the difference between "sad" and "grieving" is audible, the
-# difference between eleven gradations of sad is not, and every extra rung is
-# another string to go wrong.
-STYLE_WORDS = {
-    "happy": ("warm", "bright and delighted"),
-    "angry": ("terse", "sharply angry"),
-    "sad": ("subdued", "sorrowful"),
-    "afraid": ("wary", "frightened"),
-    "disgusted": ("cold", "repelled"),
-    "melancholic": ("wistful", "heavy with melancholy"),
-    "surprised": ("caught off guard", "startled"),
-    "calm": ("calm", "very calm and even"),
+LANGUAGES = {
+    "zh": "Chinese",
+    "en": "English",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "de": "German",
+    "fr": "French",
+    "ru": "Russian",
+    "pt": "Portuguese",
+    "es": "Spanish",
+    "it": "Italian",
 }
 
-# What the reading sounds like when the vector says nothing at all.
-STYLE_NEUTRAL = "natural and even"
-
-# Pace, from the host's rate. The model has no rate argument - this is how a
-# reading speed reaches it at all, and it is why the Speed control does
-# something on this engine rather than being accepted and discarded.
-PACE_WORDS = [
-    (0.7, "much slower"),
-    (0.9, "slightly slower"),
-    (1.12, None),
-    (1.4, "slightly faster"),
-    (99.0, "much faster"),
-]
-
-# Narration is coloured, never acted. The prose around a line is not a
-# performance of it, and a narrator who emotes through a description of weather
-# is the other half of the problem the per-line direction exists to solve.
-NARRATION_WORDS = "measured narration"
-
-# Above this a dimension is a performance rather than a tint.
-STRONG = 0.55
-
-# Below this the vector is saying nothing worth saying.
-QUIET = 0.18
-
-
-def pace_word(rate: Any) -> str | None:
-    """The reading speed as one of five fixed phrases, or none for normal."""
-    try:
-        value = float(rate)
-    except (TypeError, ValueError):
-        return None
-    if value <= 0:
-        return None
-    for ceiling, word in PACE_WORDS:
-        if value < ceiling:
-            return word
-    return None
-
-
-def style_prefix(segment: dict[str, Any], rate: Any) -> str:
-    """The direction for one segment, as a phrase from the closed vocabulary.
-
-    Built entirely from numbers and booleans the host sent. No string the writer
-    typed is consulted, which is the whole point - see the block comment above.
-    """
-    vector = segment.get("vector") or {}
-    parts: list[str] = []
-
-    strongest = ""
-    weight = 0.0
-    for name in EMOTION_DIMENSIONS:
-        try:
-            value = float(vector.get(name, 0.0))
-        except (TypeError, ValueError):
-            value = 0.0
-        if value > weight:
-            strongest = name
-            weight = value
-
-    if strongest and weight >= QUIET:
-        quiet, strong = STYLE_WORDS[strongest]
-        parts.append(strong if weight >= STRONG else quiet)
-    else:
-        parts.append(STYLE_NEUTRAL)
-
-    if not segment.get("isDialogue"):
-        parts.append(NARRATION_WORDS)
-
-    if (pace := pace_word(rate)) is not None:
-        parts.append(pace)
-
-    return ", ".join(parts)
-
-
-# The bracket characters the model reads as an instruction group.
-OPENERS = "(（"
-CLOSERS = ")）"
-
-
-def unbracket(text: str) -> str:
-    """Takes the brackets off an aside that opens the line.
-
-    The model reads a parenthesised group at the front of the text as direction
-    and consumes it. Putting our own prefix in front is what stops the prose
-    being read AS direction - but it does not stop the next group being eaten,
-    because two groups in a row is the model's own syntax for a designed voice.
-
-    Measured, not assumed. "(Sie drehte sich nicht um.) Der Wind nahm es mit."
-    behind a prefix came back as 1.44 s where the whole line is 2.40 s and the
-    tail alone is 1.12 s: the aside was gone. A space between the groups did not
-    help. That is a clause of somebody's novel disappearing out of the reading
-    with nothing anywhere saying so, which is the worst way this can fail.
-
-    So the brackets come off and the words stay. Nothing is lost: a bracket has
-    no sound of its own, and the clause inside it is read as the writer wrote
-    it. Only a leading one is touched - a bracket in the middle of a sentence is
-    never in the instruction slot and is left exactly alone.
-    """
-    said = text.lstrip()
-    while said[:1] in OPENERS:
-        depth = 0
-        for i, ch in enumerate(said):
-            if ch in OPENERS:
-                depth += 1
-            elif ch in CLOSERS:
-                depth -= 1
-                if depth == 0:
-                    said = (said[1:i] + said[i + 1:]).lstrip()
-                    break
-        else:
-            # An opening bracket the writer never closed. Dropping the one mark
-            # is enough to get the words out of the instruction slot.
-            said = said[1:].lstrip()
-            break
-    return said
-
-
-def directed(text: str, prefix: str) -> str:
-    """The words with their direction in front, and nothing of the words in it.
-
-    The direction is built from numbers and never from anything the writer
-    typed, and a prefix is always emitted - so the prose is never the first
-    thing the model reads and can never be mistaken for an instruction.
-    """
-    return "(" + prefix + ")" + unbracket(text)
-
-
-# ── The design brief ────────────────────────────────────────────────────────
-
-# What a designed voice says when the character has no lines yet.
-#
-# In the book's own language, because the clip this produces IS the voice from
-# then on and every later line is cloned from it - accent included. An English
-# sentence here is an English accent on every page of a German novel, which is
-# precisely the bug this table exists to end. The narrator, who speaks most of a
-# book and has no dialogue of their own to sample, hit it on every single line.
 DESIGN_LINES = {
-    "en": "This is how I sound when nothing in particular is wrong.",
-    "de": "So höre ich mich an, wenn nichts Besonderes vorgefallen ist.",
-    "fr": "Voici comment je parle lorsque rien de particulier ne se passe.",
-    "es": "Así sueno cuando no ocurre nada en particular.",
-    "it": "Ecco come suono quando non succede niente di particolare.",
-    "pt": "É assim que eu soo quando nada de especial acontece.",
-    "nl": "Zo klink ik wanneer er niets bijzonders aan de hand is.",
-    "da": "Sådan lyder jeg, når der ikke er noget særligt i vejen.",
-    "sv": "Så här låter jag när ingenting särskilt har hänt.",
-    "no": "Slik høres jeg ut når ingenting spesielt er galt.",
-    "fi": "Tältä kuulostan, kun mikään ei ole erityisesti vialla.",
-    "pl": "Tak brzmię, kiedy nic szczególnego się nie dzieje.",
-    "ru": "Вот как я звучу, когда ничего особенного не случилось.",
-    "tr": "Özel bir sorun yokken sesim böyle çıkar.",
-    "el": "Έτσι ακούγομαι όταν δεν συμβαίνει τίποτα ιδιαίτερο.",
-    "zh": "没有什么特别的事情时，我就是这个声音。",
-    "ja": "特に何もないときの私の声はこんな感じです。",
-    "ko": "별일 없을 때 제 목소리는 이렇습니다.",
-    "hi": "जब कुछ ख़ास नहीं होता, तब मैं ऐसे सुनाई देता हूँ।",
-    "ar": "هكذا يبدو صوتي حين لا يحدث شيء خاص.",
-    "id": "Beginilah suara saya ketika tidak ada yang istimewa.",
-    "vi": "Đây là giọng của tôi khi không có gì đặc biệt xảy ra.",
-    "th": "นี่คือเสียงของฉันเมื่อไม่มีอะไรผิดปกติ.",
-    "he": "כך אני נשמע כששום דבר מיוחד לא קורה.",
-    "ms": "Beginilah bunyi suara saya apabila tiada apa-apa yang istimewa.",
-    "uk": "Ось як я звучу, коли нічого особливого не сталося.",
-    "cs": "Takhle zním, když se neděje nic zvláštního.",
-    "sk": "Takto zniem, keď sa nedeje nič zvláštne.",
+    "Chinese": "这就是我自然说话时的声音。我会用舒适的节奏清楚地表达。现在，我将平静而自然地继续讲述这个故事。",
+    "English": "This is my natural speaking voice. I speak clearly at a comfortable pace. Now I will continue the story calmly and without affectation.",
+    "Japanese": "これが普段の私の声です。心地よい速さで、はっきりと話します。それでは、落ち着いて自然に物語を続けます。",
+    "Korean": "이것이 평소의 제 목소리입니다. 편안한 속도로 또렷하게 말합니다. 이제 차분하고 자연스럽게 이야기를 이어가겠습니다.",
+    "German": "So klingt meine natürliche Stimme. Ich spreche deutlich und in einem angenehmen Tempo. Nun werde ich die Geschichte ruhig und ungezwungen weitererzählen.",
+    "French": "Voici ma voix naturelle. Je parle clairement, à un rythme confortable. Je vais maintenant poursuivre cette histoire avec calme et naturel.",
+    "Russian": "Так звучит мой обычный голос. Я говорю ясно и в удобном темпе. Теперь я спокойно и естественно продолжу этот рассказ.",
+    "Portuguese": "Esta é a minha voz natural. Falo com clareza e em um ritmo confortável. Agora continuarei a história com calma e naturalidade.",
+    "Spanish": "Así suena mi voz natural. Hablo con claridad y a un ritmo cómodo. Ahora continuaré la historia con calma y naturalidad.",
+    "Italian": "Questa è la mia voce naturale. Parlo chiaramente e a un ritmo confortevole. Ora continuerò la storia con calma e naturalezza.",
 }
-
-# How long a design sample may run. A speech says less about a voice than three
-# short sentences do, and the clip is conditioning rather than content.
-DESIGN_SAMPLE_LIMIT = 220
-
-# How many draws a design gets. The first is the stable one the brief asks for;
-# the rest are only reached when that draw produced nothing usable.
-DESIGN_ATTEMPTS = 3
 
 
 def base_language(tag: str | None) -> str:
-    """The bare language of a BCP-47 tag: "de-DE" and "de-low" are both German."""
+    """Return the base part of a BCP-47 language tag."""
     return (tag or "en").replace("_", "-").split("-")[0].lower()
 
 
-def design_line(tag: str | None, samples: list[str]) -> str:
-    """What the designed voice should say, in the book's own language.
+def qwen_language(tag: str | None) -> str | None:
+    """Translate a BCP-47 tag to the language name Qwen validates."""
+    return LANGUAGES.get(base_language(tag))
 
-    The character's own words where there are any - a voice made from a line the
-    character actually speaks sits closer to how they sound on the page, and it
-    is already in the right language by construction. Otherwise a fixed sentence
-    in that language, which is the case the narrator always falls into.
+
+def design_text(tag: str | None) -> str:
+    """Return a controlled, neutral three-sentence cloning transcript.
+
+    Character dialogue is intentionally not used here. Its semantic emotion
+    would become part of the ICL reference and pull every later line toward the
+    mood of whichever excerpt happened to be selected during design.
     """
-    for line in samples:
-        said = str(line).strip()
-        if said:
-            return said[:DESIGN_SAMPLE_LIMIT]
-
-    code = base_language(tag)
-    return DESIGN_LINES.get(code) or DESIGN_LINES["en"]
+    language = qwen_language(tag) or "English"
+    return DESIGN_LINES[language]
 
 
-def brief_prefix(description: str) -> str:
-    """A brief as a parenthesised instruction the model will not misread.
-
-    Brackets come out. The instruction is one parenthesised group and a bracket
-    inside it closes the group early, which would put the rest of the writer's
-    own description into the text slot and have it read aloud. This is the only
-    place writer-supplied words reach a prefix at all, and it is why they are
-    cleaned before they get there.
-    """
+def voice_instruction(description: Any, language: str) -> str:
+    """Turn the approved brief into a concise acoustic design instruction."""
     said = " ".join(str(description or "").split())
-    said = said.replace("(", " ").replace(")", " ").replace("（", " ").replace("）", " ")
-    said = " ".join(said.split())
-    return said or "A clear, neutral speaking voice at an even tempo."
+    if not said:
+        said = (
+            "Adult voice, balanced mid-range pitch, clear natural timbre, "
+            "precise articulation, restrained cadence, neutral baseline"
+        )
+    return (
+        f"Design a reusable voice with these stable acoustic traits: {said}. "
+        f"Use native {language} pronunciation. Keep this reference natural and neutral; "
+        "do not act a scene or add background sound."
+    )
 
 
-@dataclass
-class Engine:
-    model: Any
-    device: str
-    sample_rate: int
+def seed_for(request: dict[str, Any]) -> int:
+    """Use a pinned non-negative seed, or make a fresh design draw."""
+    asked = request.get("seed")
+    if isinstance(asked, bool) or not isinstance(asked, int) or asked < 0:
+        return secrets.randbelow(2 ** 31)
+    return asked % (2 ** 31)
+
+
+def reading_rate(value: Any) -> float:
+    """Clamp the host's reading rate to the range exposed by its UI."""
+    try:
+        rate = float(value)
+    except (TypeError, ValueError):
+        return 1.0
+    return min(2.0, max(0.5, rate)) if rate > 0 else 1.0
 
 
 def pick_device() -> str:
-    """The best device this machine actually has.
-
-    CPU is a real answer, not a failure: it is slow, the host says so before the
-    writer waits, and a writer without a graphics card is not locked out of
-    hearing their book.
-    """
+    """Use a GPU when available and retain a real, if slow, CPU path."""
     try:
         import torch
     except ImportError:
         return "cpu"
-
     if torch.cuda.is_available():
         return "cuda"
     mps = getattr(torch.backends, "mps", None)
@@ -423,44 +174,187 @@ def pick_device() -> str:
     return "cpu"
 
 
-def load() -> Engine:
-    """Loads the model.
+@dataclass
+class Engine:
+    device: str
+    dtype: Any
+    clone_model: Any = None
+    design_model: Any = None
+    sample_rate: int = 24000
+    clone_prompts: dict[str, tuple[str, Any]] = field(default_factory=dict)
 
-    Tens of seconds on a later run, and several minutes on the first, when the
-    weights are still being fetched. No fractions are reported: none of these
-    steps knows how far through it is, and a bar frozen at seventy per cent
-    reads as broken where a moving one reads as working.
 
-    One model for both stages. The old arrangement loaded a designer beside a
-    deliverer and paid for both; this one is loaded once and does everything,
-    which is also why the first voice design no longer sits behind four
-    gigabytes nobody was warned about.
-    """
+def new_engine() -> Engine:
+    """Create the lightweight holder; checkpoints are loaded on demand."""
     emit(type="progress", step="importing")
-    from voxcpm import VoxCPM
+    import torch
 
     device = pick_device()
-    emit(type="progress", step="loading-model", detail=device)
-    model = VoxCPM.from_pretrained(
-        MODEL,
-        # The denoiser is for cleaning up a recording somebody made on a phone.
-        # Every reference clip here was generated by this same model at 48 kHz,
-        # so there is nothing to clean and it would only cost load time and
-        # memory. It also runs on the CPU whatever device is chosen.
-        load_denoiser=False,
-        device=device,
-        optimize=OPTIMIZE,
-    )
-    rate = int(getattr(model, "sample_rate", 0) or 48000)
-    return Engine(model=model, device=device, sample_rate=rate)
+    dtype = torch.bfloat16 if device == "cuda" else torch.float32
+    return Engine(device=device, dtype=dtype)
+
+
+def _model_kwargs(engine: Engine) -> dict[str, Any]:
+    target = "cuda:0" if engine.device == "cuda" else engine.device
+    kwargs: dict[str, Any] = {"device_map": target, "dtype": engine.dtype}
+    kwargs["attn_implementation"] = "sdpa" if engine.device != "cpu" else "eager"
+    return kwargs
+
+
+def byte_count(value: int) -> str:
+    """A compact binary-size label for the preparation dialog."""
+    amount = float(max(0, value))
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if amount < 1024.0 or unit == "GiB":
+            digits = 0 if unit in {"B", "KiB"} else 1
+            return f"{amount:.{digits}f} {unit}"
+        amount /= 1024.0
+    return f"{amount:.1f} GiB"
+
+
+class HubDownloadProgress:
+    """The byte bar Hugging Face normally draws on stderr, sent to the host.
+
+    Updates are throttled because a model download advances in small chunks and
+    each protocol line ultimately becomes a UI update. Completion is always
+    reported even when it falls inside the throttle window.
+    """
+
+    def __init__(self, label: str, total: int | None, initial: int = 0):
+        self.label = label
+        self.total = max(0, int(total or 0))
+        self.current = max(0, int(initial))
+        self.last_report = 0.0
+        self.report(force=True)
+
+    def update(self, amount: int = 1) -> None:
+        self.current += max(0, int(amount))
+        self.report(force=self.total > 0 and self.current >= self.total)
+
+    def close(self) -> None:
+        self.report(force=True)
+
+    def report(self, force: bool = False) -> None:
+        now = time.monotonic()
+        if not force and now - self.last_report < 0.2:
+            return
+        self.last_report = now
+        fraction = min(1.0, self.current / self.total) if self.total > 0 else None
+        amount = byte_count(self.current)
+        detail = (
+            f"{self.label} · {amount} / {byte_count(self.total)}"
+            if self.total > 0 else f"{self.label} · {amount}"
+        )
+        emit(
+            type="progress",
+            step="downloading-model",
+            detail=detail,
+            fraction=fraction,
+        )
+
+
+def download_checkpoint(model_id: str, detail: str) -> str:
+    """Download/resume one Hub repository while forwarding its byte progress."""
+    emit(type="progress", step="downloading-model", detail=detail)
+    from huggingface_hub import snapshot_download
+    import huggingface_hub.file_download as file_download
+
+    original = file_download._get_progress_bar_context
+
+    def progress_context(
+        *,
+        desc: str,
+        log_level: int,
+        total: int | None = None,
+        initial: int = 0,
+        unit: str = "B",
+        unit_scale: bool = True,
+        name: str | None = None,
+        _tqdm_bar: Any = None,
+    ) -> Any:
+        if _tqdm_bar is not None:
+            return contextlib.nullcontext(_tqdm_bar)
+        if unit == "B":
+            return contextlib.closing(HubDownloadProgress(detail, total, initial))
+        return original(
+            desc=desc,
+            log_level=log_level,
+            total=total,
+            initial=initial,
+            unit=unit,
+            unit_scale=unit_scale,
+            name=name,
+            _tqdm_bar=_tqdm_bar,
+        )
+
+    file_download._get_progress_bar_context = progress_context
+    try:
+        # One file at a time gives the dialog one honest byte bar. The model
+        # repositories are dominated by their weight files, so concurrent small
+        # metadata downloads do not materially improve the total transfer time.
+        with contextlib.redirect_stdout(sys.stderr):
+            return snapshot_download(repo_id=model_id, max_workers=1)
+    finally:
+        file_download._get_progress_bar_context = original
+
+
+def _load_checkpoint(engine: Engine, model_id: str, detail: str) -> Any:
+    snapshot = download_checkpoint(model_id, detail)
+    emit(type="progress", step="loading-model", detail=detail)
+    with contextlib.redirect_stdout(sys.stderr):
+        from qwen_tts import Qwen3TTSModel
+        return Qwen3TTSModel.from_pretrained(snapshot, **_model_kwargs(engine))
+
+
+def _release(engine: Engine, which: str) -> None:
+    if which == "clone":
+        engine.clone_model = None
+        engine.clone_prompts.clear()
+    else:
+        engine.design_model = None
+    gc.collect()
+    try:
+        import torch
+        if engine.device == "cuda":
+            torch.cuda.empty_cache()
+    except ImportError:
+        pass
+
+
+def ensure_clone(engine: Engine) -> Any:
+    if engine.clone_model is not None:
+        return engine.clone_model
+    if engine.design_model is not None:
+        _release(engine, "design")
+    engine.clone_model = _load_checkpoint(engine, CLONE_MODEL, "voice cloning")
+    return engine.clone_model
+
+
+def ensure_design(engine: Engine) -> Any:
+    if engine.design_model is not None:
+        return engine.design_model
+    if engine.clone_model is not None:
+        _release(engine, "clone")
+    engine.design_model = _load_checkpoint(engine, DESIGN_MODEL, "voice design")
+    return engine.design_model
+
+
+def seed_torch(seed: int) -> None:
+    import torch
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 def write_wav(path: str, audio: Any, sample_rate: int) -> float:
-    """Writes 16-bit mono and returns the duration in milliseconds."""
+    """Write 16-bit mono PCM and return its duration in milliseconds."""
     import numpy as np
 
     samples = np.asarray(audio.detach().cpu().numpy() if hasattr(audio, "detach") else audio)
     samples = samples.squeeze()
+    if samples.ndim > 1:
+        samples = samples.mean(axis=0)
+    samples = np.nan_to_num(samples)
     if samples.dtype.kind == "f":
         samples = np.clip(samples, -1.0, 1.0)
         samples = (samples * 32767).astype("<i2")
@@ -472,81 +366,49 @@ def write_wav(path: str, audio: Any, sample_rate: int) -> float:
         handle.setsampwidth(2)
         handle.setframerate(sample_rate)
         handle.writeframes(samples.tobytes())
-
     return len(samples) * 1000.0 / float(sample_rate)
 
 
-def seed_from(text: str) -> int:
-    """A stable number from a brief.
-
-    Kept for a writer who asks for one particular voice back, and no longer the
-    default. Deriving every draw from the words meant pressing Design again on
-    an unchanged brief returned the identical voice - so "I did not like that
-    one, try again", which is the one thing the design dialog is built around,
-    did nothing at all and said nothing about it.
-    """
-    digest = hashlib.sha256(text.encode("utf-8")).digest()
-    return int.from_bytes(digest[:4], "big")
-
-
-def seed_for(request: dict[str, Any]) -> int:
-    """The seed this design should draw with.
-
-    A number the writer pinned, or a fresh one. Fresh is the default because
-    design is not reproducible and asking twice is the only way to get a second
-    answer; pinned is how somebody keeps a voice they liked, or gets it back
-    after changing their mind.
-    """
-    asked = request.get("seed")
-    if isinstance(asked, bool) or not isinstance(asked, int):
-        return secrets.randbelow(2 ** 31)
-    # Negative is the interface's way of saying "surprise me", and a seed
-    # outside the generator's range would be a crash rather than a voice.
-    return asked % (2 ** 31) if asked >= 0 else secrets.randbelow(2 ** 31)
+def stretch(audio: Any, rate: Any) -> Any:
+    """Change duration without changing pitch; 1.0 leaves samples untouched."""
+    speed = reading_rate(rate)
+    if abs(speed - 1.0) < 0.001:
+        return audio
+    import librosa
+    import numpy as np
+    return librosa.effects.time_stretch(np.asarray(audio, dtype=np.float32), rate=speed)
 
 
 def do_design(engine: Engine, work: str, request: dict[str, Any]) -> None:
-    """Stage one: make this character's voice out of what was written about them.
-
-    The brief goes in as the instruction and comes back as a timbre. Nothing is
-    cloned and no recording of anybody is involved, which is what lets a voice
-    be designed from a Codex entry at all.
-
-    The clip this returns *is* the voice from here on: the host stores it, and
-    every line that character ever speaks is delivered in it - accent included,
-    which is why the words it speaks are in the book's language and not in ours.
-    """
+    """Create the approved reference clip and report its exact transcript."""
     voice_id = str(request.get("voiceId") or "voice")
-    language = request.get("language")
-    samples = [line for line in (request.get("sampleLines") or []) if str(line).strip()]
+    language = qwen_language(request.get("language"))
+    if language is None:
+        emit(type="error", key=voice_id, error="unsupported-language")
+        return
 
-    spoken = design_line(language, samples)
-    prompt = directed(spoken, brief_prefix(request.get("description")))
-
-    # Seeded through torch rather than through an argument: generate() takes no
-    # seed of its own, so the only handle on the draw is the global generator it
-    # samples from. Set immediately before the call, because anything else that
-    # touches torch in between moves it on.
-    import torch
-
+    spoken = design_text(request.get("language"))
+    instruction = voice_instruction(request.get("description"), language)
+    model = ensure_design(engine)
     base = seed_for(request)
+
     wav = None
+    used = base
+    sample_rate = engine.sample_rate
     for attempt in range(DESIGN_ATTEMPTS):
+        used = (base + attempt) % (2 ** 31)
         try:
-            torch.manual_seed(base + attempt)
-            wav = engine.model.generate(
-                text=prompt,
-                cfg_value=CFG_VALUE,
-                inference_timesteps=TIMESTEPS,
-                normalize=True,
-                retry_badcase=True,
-            )
+            seed_torch(used)
+            with contextlib.redirect_stdout(sys.stderr):
+                wavs, sample_rate = model.generate_voice_design(
+                    text=spoken,
+                    language=language,
+                    instruct=instruction,
+                    temperature=TEMPERATURE,
+                    subtalker_temperature=TEMPERATURE,
+                )
+            wav = wavs[0] if wavs else None
         except RuntimeError:
-            # A draw the model's own decoder could not finish. Because the seed
-            # comes from the brief, an unlucky one is not bad luck once - that
-            # description would be broken for ever and pressing the button again
-            # would reproduce it exactly. So the first seed is the stable one
-            # and the next few are fallbacks, tried only when the draw was bad.
             note("design attempt %d could not be decoded" % (attempt + 1))
             wav = None
         if wav is not None:
@@ -556,49 +418,62 @@ def do_design(engine: Engine, work: str, request: dict[str, Any]) -> None:
         emit(type="error", key=voice_id, error="designed-nothing")
         return
 
+    engine.sample_rate = int(sample_rate)
     name = "design-%s.wav" % hashlib.sha256(voice_id.encode("utf-8")).hexdigest()[:12]
     duration = write_wav(os.path.join(work, name), wav, engine.sample_rate)
     emit(
         type="designed",
         key=voice_id,
         file=name,
+        text=spoken,
         sampleRate=engine.sample_rate,
         durationMs=duration,
-        # The number this voice was actually drawn with, including the attempt
-        # it took - so a writer who likes what they hear can ask for it again,
-        # which is not possible if only the engine ever knew it.
-        seed=base + attempt,
+        seed=used,
     )
 
 
-def reference_for(work: str, design: str, segment: dict[str, Any]) -> str:
-    """Which clip this line is cloned from.
+def _reference_fingerprint(path: str, transcript: str) -> str:
+    digest = hashlib.sha256(transcript.encode("utf-8"))
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(65536), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
-    The character's design clip, unless the writer pointed at a line and said
-    "like that" - and then that one.
 
-    The model clones its whole delivery from its reference, the timbre and the
-    prosody together, so a clip already performed the way they wanted directs
-    this line more exactly than any word for it. The host only ever offers clips
-    in the same character's voice, so the identity does not move when the
-    delivery does.
+def clone_prompt(
+    engine: Engine,
+    model: Any,
+    voice_id: str,
+    reference_path: str,
+    transcript: str,
+) -> Any:
+    """Build one ICL prompt per approved voice and reuse it across the run."""
+    fingerprint = _reference_fingerprint(reference_path, transcript)
+    cached = engine.clone_prompts.get(voice_id)
+    if cached is not None and cached[0] == fingerprint:
+        return cached[1]
 
-    A clip that is not on disk falls back to the design clip rather than
-    failing. The writer's point was about the delivery; losing the resemblance
-    is a disappointment and losing the line is a hole in the reading.
-    """
-    pointed = segment.get("likeThis")
-    if pointed:
-        path = os.path.join(work, str(pointed))
-        if os.path.exists(path):
-            return path
-        note("a clip pointed at is not on disk; using the design clip")
-    return os.path.join(work, design)
+    with contextlib.redirect_stdout(sys.stderr):
+        prompt = model.create_voice_clone_prompt(
+            ref_audio=reference_path,
+            ref_text=transcript,
+            x_vector_only_mode=False,
+        )
+    engine.clone_prompts[voice_id] = (fingerprint, prompt)
+    return prompt
 
 
 def do_render(engine: Engine, work: str, request: dict[str, Any]) -> None:
-    """Stage two: speak each segment in its character's stored voice."""
+    """Read each supplied passage in a stable transcript-conditioned voice."""
+    language = qwen_language(request.get("language"))
+    if language is None:
+        emit(type="error", error="unsupported-language")
+        emit(type="done")
+        return
+
+    model = ensure_clone(engine)
     voices = request.get("voices") or {}
+    voice_texts = request.get("voiceTexts") or {}
     rate = request.get("rate")
 
     for index, segment in enumerate(request.get("segments") or []):
@@ -609,40 +484,37 @@ def do_render(engine: Engine, work: str, request: dict[str, Any]) -> None:
 
         voice_id = str(segment.get("voiceId") or "")
         reference = voices.get(voice_id)
+        transcript = str(voice_texts.get(voice_id) or "").strip()
         if not reference:
             emit(type="error", key=key, error="unknown-voice")
             continue
+        if not transcript:
+            emit(type="error", key=key, error="missing-reference-text")
+            continue
 
         try:
-            # The request id is in the name, so an abandoned render can neither
-            # overwrite a live one's clip nor have its own deleted out from
-            # under it.
+            reference_path = os.path.join(work, str(reference))
+            prompt = clone_prompt(engine, model, voice_id, reference_path, transcript)
+            with contextlib.redirect_stdout(sys.stderr):
+                wavs, sample_rate = model.generate_voice_clone(
+                    text=text,
+                    language=language,
+                    voice_clone_prompt=prompt,
+                    non_streaming_mode=True,
+                    temperature=TEMPERATURE,
+                    subtalker_temperature=TEMPERATURE,
+                )
+            if not wavs:
+                raise RuntimeError("generated no audio")
+            wav = stretch(wavs[0], rate)
+            engine.sample_rate = int(sample_rate)
+
             name = "clip-%s-%04d-%s.wav" % (
                 CURRENT_ID or "x",
                 index,
                 hashlib.sha256(key.encode("utf-8")).hexdigest()[:10],
             )
-            target = os.path.join(work, name)
-            clip = reference_for(work, reference, segment)
-
-            # The plain cloning path, and only ever that one.
-            #
-            # The model also takes prompt_wav_path with prompt_text, which reads
-            # like a higher-fidelity clone and is not: it is CONTINUATION. Given
-            # both, it returns the reference clip followed by the new speech -
-            # measured at 6.72 s against 1.44 s for the same sentence cloned
-            # plainly, the difference being the whole 3.84 s design clip on the
-            # front. Every line in the book would have opened with the character
-            # reciting the sentence their voice was designed from.
-            wav = engine.model.generate(
-                text=directed(text, style_prefix(segment, rate)),
-                reference_wav_path=clip,
-                cfg_value=CFG_VALUE,
-                inference_timesteps=TIMESTEPS,
-                normalize=True,
-                retry_badcase=True,
-            )
-            duration = write_wav(target, wav, engine.sample_rate)
+            duration = write_wav(os.path.join(work, name), wav, engine.sample_rate)
             emit(
                 type="clip",
                 key=key,
@@ -650,7 +522,7 @@ def do_render(engine: Engine, work: str, request: dict[str, Any]) -> None:
                 sampleRate=engine.sample_rate,
                 durationMs=duration,
             )
-        except Exception as failure:  # noqa: BLE001 - one bad line must not end the book
+        except Exception as failure:  # noqa: BLE001 - one bad passage need not end the run
             note(traceback.format_exc())
             emit(type="error", key=key, error=type(failure).__name__)
 
@@ -664,22 +536,13 @@ def main() -> int:
     os.makedirs(args.work, exist_ok=True)
 
     engine: Engine | None = None
-
     for line in sys.stdin:
-        # A byte-order mark, if the host's encoder insists on writing one. It is
-        # not whitespace and json.loads will not have it, so it has to come off
-        # explicitly rather than by stripping.
         line = line.lstrip("﻿").strip()
         if not line:
             continue
-
         try:
             request = json.loads(line)
         except json.JSONDecodeError:
-            # Said, not swallowed. Dropping an unreadable line in silence is how
-            # three stray bytes on the front of the first request turned into a
-            # dialog that read "Starting" for ever: both sides waited for the
-            # other, and nothing anywhere said why.
             emit(type="error", error="bad-request")
             continue
 
@@ -688,14 +551,19 @@ def main() -> int:
         CURRENT_ID = str(request.get("id") or "")
         try:
             if engine is None and op in {"status", "design", "render"}:
-                engine = load()
+                engine = new_engine()
 
             if op == "status":
+                # Preparation means both checkpoints are present, not just the
+                # reader. Only one remains resident to keep peak VRAM bounded.
+                ensure_design(engine)
+                _release(engine, "design")
+                ensure_clone(engine)
                 emit(
                     type="ready",
                     version=PROTOCOL_VERSION,
                     ready=True,
-                    detail="%s on %s" % (MODEL, engine.device),
+                    detail=f"{CLONE_MODEL} + {DESIGN_MODEL} on {engine.device}",
                 )
             elif op == "design":
                 do_design(engine, args.work, request)
@@ -707,12 +575,7 @@ def main() -> int:
             trace = traceback.format_exc()
             note(trace)
             keep_failure(args.work, op or "request", trace)
-            # A model that failed once is not to be trusted to have survived it
-            # - a CUDA fault in particular poisons everything after it - so it
-            # is dropped and built again next time rather than reused.
             engine = None
-            # The type only. The message can quote a path, and the host writes
-            # what it is told into a log the writer may send us.
             emit(type="error", error=type(failure).__name__)
 
     return 0
