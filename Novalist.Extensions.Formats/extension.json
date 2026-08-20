@@ -2,7 +2,7 @@
   "id": "com.novalist.formats",
   "name": "Formats",
   "description": "Export to HTML, RTF, ODT, plain text, Fountain and FictionBook. Import from Scrivener, Ulysses, Markdown folders and delimited files. Checks a finished EPUB before you send it.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Novalist Team",
   "entryAssembly": "Novalist.Extensions.Formats.dll",
   "minHostVersion": "3.0.0",

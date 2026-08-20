@@ -2,7 +2,7 @@
   "id": "com.novalist.insight",
   "name": "Insight",
   "description": "Reports over the whole manuscript: name drift, project health, a continuity worklist, a word-frequency concordance and a pacing curve.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Novalist Team",
   "entryAssembly": "Novalist.Extensions.Insight.dll",
   "minHostVersion": "3.0.0",
