@@ -106,8 +106,12 @@ jobs:
               # keys[] returns only the names one level down, so a group with
               # any nesting in it - publish.site.character - reported every one
               # of its keys as missing while the extension worked perfectly.
-              have=$(jq -r ".$group | [paths(scalars)] | map(join(\".\")) | .[]" \
-                     "$project/Locales/$lang.json" | sort -u)
+              # Both shapes the host accepts: keys nested under the group,
+              # and flat "group.key" strings at the top level. Speech is
+              # written the second way, so asking jq for .speech found
+              # nothing and called all twenty-one of its strings missing.
+              have=$(jq -r "[paths(scalars)] | map(join(\".\")) | .[]" \
+                     "$project/Locales/$lang.json" | sed -n "s/^$group\.//p" | sort -u)
               missing=$(comm -23 <(echo "$used") <(echo "$have"))
               if [ -n "$missing" ]; then
                 echo "::error::$project $lang is missing: $(echo $missing)"
