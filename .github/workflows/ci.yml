@@ -91,8 +91,16 @@ jobs:
             group="$(echo "${project#Novalist.Extensions.}" | tr '[:upper:]' '[:lower:]')"
             [ -f "$project/Locales/en.json" ] || continue
 
-            used=$(grep -rhoE "loc\.T\(\"$group\.[A-Za-z.]+\"\)" "$project" --include='*.cs' \
-                   | sed -E "s/.*\"$group\.([A-Za-z.]+)\".*/\1/" | sort -u)
+            # Both ways an extension asks for a string: through a held
+            # localiser, and through a T(key, fallback) helper of its own.
+            # Only the first was matched, so Speech - which uses the second
+            # for every one of its twenty-one strings - was not checked at
+            # all. Worse than not checked: with nothing matched grep exits
+            # 1, and under -e -o pipefail that ended the step there, before
+            # any extension later in the alphabet had been looked at, and
+            # without a word about why.
+            used=$(grep -rhoE "T\(\"$group\.[A-Za-z.]+\"" "$project" --include='*.cs' \
+                   | sed -E "s/.*\"$group\.([A-Za-z.]+)\".*/\1/" | sort -u || true)
             for lang in en de; do
               # Every leaf, joined back into the dotted path the code asks for.
               # keys[] returns only the names one level down, so a group with
