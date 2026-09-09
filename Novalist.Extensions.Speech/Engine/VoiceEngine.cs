@@ -226,6 +226,11 @@ internal sealed class VoiceEngine : IDisposable
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await EnsureReadyAsync(cancellationToken);
+        // Older hosts still render complete clips with the low-memory decoder.
+        // Reflection keeps this optional new SDK member out of the JIT's member
+        // references, so installing the extension does not break those hosts.
+        var audioChunk = typeof(NarrationRequest).GetProperty("AudioChunk")?.GetValue(request)
+            as Action<NarrationClip>;
 
         // The reference audio goes to disk once per render rather than into the
         // message. The sidecar is told where, not what.
@@ -242,6 +247,7 @@ internal sealed class VoiceEngine : IDisposable
         await SendAsync(new SidecarRequest
         {
             Op = "render",
+            Stream = audioChunk != null,
             Id = id,
             Language = request.Language,
             Rate = request.Rate,
@@ -276,6 +282,16 @@ internal sealed class VoiceEngine : IDisposable
             if (reply.Type == "error")
             {
                 yield return new NarrationClip { Key = reply.Key, Error = reply.Error ?? "render" };
+                continue;
+            }
+            if (reply.Type == "chunk" && reply.File != null)
+            {
+                var audio = await ReadClipAsync(reply.File, cancellationToken);
+                audioChunk?.Invoke(new NarrationClip
+                {
+                    Key = reply.Key, Audio = audio, AudioFormat = "wav",
+                    SampleRate = reply.SampleRate, DurationMs = reply.DurationMs
+                });
                 continue;
             }
             if (reply.Type != "clip" || reply.File == null)

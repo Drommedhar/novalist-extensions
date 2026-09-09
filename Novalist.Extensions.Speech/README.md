@@ -105,8 +105,18 @@ transcripts work without redesign.
 
 The adapter preserves the existing sampling settings, reference prompt cache,
 voice storage, and pitch-preserving speed control. Metal allocations are
-released when switching between voice design and narration. Each passage is
-returned after synthesis finishes; playback within a passage is not streamed.
+released when switching between voice design and narration. Both models decode
+in 320 ms chunks to bound GPU memory. At normal speed, an updated host starts
+playing narration while generation continues only after measuring sustained
+throughput with enough headroom. Slower or uneven generation buffers the full
+passage first; a later underrun buffers the remainder once. Complete
+clips are still returned for replay, voice references, and audiobook export.
+Older hosts retain complete-passage playback with the same memory reduction.
+
+At other speed settings, the decoder still uses chunks, but playback waits for
+the complete waveform so pitch-preserving time stretching can avoid seams.
+No extra model download or voice redesign is needed for this streaming update.
+See [the integrated streaming benchmark](benchmarks/macos-streaming.md).
 
 See [the MLX benchmark report](benchmarks/macos-mlx.md) for measured performance,
 weight comparison, quality limitations, and reproduction commands. The earlier

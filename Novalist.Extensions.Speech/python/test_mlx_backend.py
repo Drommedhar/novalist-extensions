@@ -93,10 +93,11 @@ class MlxAdapter(unittest.TestCase):
         settings = native.generate_voice_design.call_args.kwargs
         self.assertEqual(1.05, settings["repetition_penalty"])
         self.assertEqual(8192, settings["max_tokens"])
-        self.assertFalse(settings["stream"])
+        self.assertTrue(settings["stream"])
+        self.assertEqual(0.32, settings["streaming_interval"])
 
     def test_voice_caches_are_separate_and_invalidated_by_the_shared_sidecar(self):
-        native = SimpleNamespace(_icl_cache={})
+        native = SimpleNamespace(_icl_cache={}, speech_tokenizer=MagicMock())
         seen = []
 
         def generate(**kwargs):
@@ -128,6 +129,27 @@ class MlxAdapter(unittest.TestCase):
                 non_streaming_mode=True, temperature=0.9, subtalker_temperature=0.9)
         self.assertEqual({}, native._icl_cache)
 
+    def test_stream_yields_before_generation_finishes_and_close_clears_state(self):
+        native = SimpleNamespace(_icl_cache={}, speech_tokenizer=MagicMock())
+        reached = []
+        def generate(**kwargs):
+            self.assertTrue(kwargs["stream"])
+            reached.append("first")
+            yield self.result()
+            reached.append("second")
+            yield self.result()
+        native._generate_icl = generate
+        model = mlx_backend.MlxQwenModel(native)
+        results = model.stream_voice_clone(text="test", language="German",
+            voice_clone_prompt=mlx_backend.ClonePrompt(Audio([1]), "One."),
+            temperature=0.9, subtalker_temperature=0.9)
+        audio, sr = next(results)
+        self.assertEqual(["first"], reached)
+        self.assertEqual(24000, sr)
+        results.close()
+        self.assertEqual({}, native._icl_cache)
+        native.speech_tokenizer.decoder.reset_streaming_state.assert_called_once()
+
     def test_invalid_empty_or_mixed_rate_audio_is_rejected(self):
         for results in ([], [self.result(())], [self.result((float("nan"),))],
                         [self.result(), self.result(sr=16000)]):
@@ -140,6 +162,48 @@ class MlxAdapter(unittest.TestCase):
         with patch.dict(sys.modules, {"mlx_audio.tts.utils": SimpleNamespace(load_model=loader)}):
             with self.assertRaises(RuntimeError):
                 mlx_backend.MlxQwenModel.from_pretrained("cached")
+
+
+class StreamingProtocol(unittest.TestCase):
+    def test_preview_precedes_complete_clip_and_nondefault_speed_stays_buffered(self):
+        for rate, chunks_expected in ((1.0, 2), (0.9, 0)):
+            events = []
+            model = MagicMock()
+            def generate(**kwargs):
+                yield Audio([0.1]), 24000
+                if rate == 1.0:
+                    self.assertEqual(["chunk"], [e["type"] for e in events])
+                yield Audio([0.2]), 24000
+            model.stream_voice_clone.side_effect = generate
+            numpy = SimpleNamespace(concatenate=lambda chunks: Audio(v for c in chunks for v in c))
+            with patch.dict(sys.modules, {"numpy": numpy}), \
+                    patch.object(sidecar, "ensure_clone", return_value=model), \
+                    patch.object(sidecar, "clone_prompt", return_value=object()), \
+                    patch.object(sidecar, "write_wav", return_value=320), \
+                    patch.object(sidecar, "stretch", side_effect=lambda audio, rate: audio) as stretch, \
+                    patch.object(sidecar, "emit", side_effect=lambda **kw: events.append(kw)):
+                sidecar.do_render(sidecar.Engine("mlx", "bf16"), "/work", dict(
+                    stream=True, rate=rate, language="de", voices={"v": "voice.wav"},
+                    voiceTexts={"v": "Hello."}, segments=[dict(key="one", voiceId="v", text="Text.")]))
+                self.assertEqual(["chunk"] * chunks_expected + ["clip", "done"], [e["type"] for e in events])
+                stretch.assert_called_once_with([0.1, 0.2], rate)
+
+    def test_midstream_failure_never_emits_a_complete_clip(self):
+        events = []
+        model = MagicMock()
+        def generate(**kwargs):
+            yield Audio([0.1]), 24000
+            raise RuntimeError("decoder failure")
+        model.stream_voice_clone.side_effect = generate
+        with patch.dict(sys.modules, {"numpy": SimpleNamespace()}), \
+                patch.object(sidecar, "ensure_clone", return_value=model), \
+                patch.object(sidecar, "clone_prompt", return_value=object()), \
+                patch.object(sidecar, "write_wav", return_value=320), patch.object(sidecar, "note"), \
+                patch.object(sidecar, "emit", side_effect=lambda **kw: events.append(kw)):
+            sidecar.do_render(sidecar.Engine("mlx", "bf16"), "/work", dict(
+                stream=True, language="de", voices={"v": "voice.wav"}, voiceTexts={"v": "Hello."},
+                segments=[dict(key="one", voiceId="v", text="Text.")]))
+        self.assertEqual(["chunk", "error", "done"], [e["type"] for e in events])
 
 
 class MlxDownload(unittest.TestCase):

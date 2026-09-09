@@ -56,8 +56,9 @@ Streaming was benchmarked separately. It reduced MLX peak allocations to about
 5.2 GB and delivered an initial chunk in roughly 0.4 seconds on the short
 passage. A later long streaming run was much faster than the earlier tests,
 so those measurements should not be combined into a single speedup claim.
-**Production still returns complete passages.** Integrating intra-passage
-playback is a separate host/protocol change.
+These were the pre-integration results. The subsequent
+[streaming implementation and measurements](macos-streaming.md) add live
+normal-speed playback while retaining complete clips for cache/export.
 
 ## Reproduction
 

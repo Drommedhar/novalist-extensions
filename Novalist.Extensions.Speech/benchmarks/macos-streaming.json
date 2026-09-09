@@ -1,0 +1,62 @@
+[
+  {
+    "kind": "short",
+    "rate": 1,
+    "seconds": 8.15355866693426,
+    "audio_seconds": 7.44,
+    "first_chunk_seconds": 0.5173297920264304,
+    "chunks": 24,
+    "active_memory": 4625253436,
+    "peak_memory": 5814002984
+  },
+  {
+    "kind": "short",
+    "rate": 1,
+    "seconds": 7.8712969169719145,
+    "audio_seconds": 7.44,
+    "first_chunk_seconds": 0.407379167038016,
+    "chunks": 24,
+    "active_memory": 4625253436,
+    "peak_memory": 5176280765
+  },
+  {
+    "kind": "short",
+    "rate": 1,
+    "seconds": 7.833187458920293,
+    "audio_seconds": 7.44,
+    "first_chunk_seconds": 0.39510804193560034,
+    "chunks": 24,
+    "active_memory": 4625253436,
+    "peak_memory": 5176281635
+  },
+  {
+    "kind": "long",
+    "rate": 1,
+    "seconds": 29.840709000010975,
+    "audio_seconds": 28.32,
+    "first_chunk_seconds": 0.44617766700685024,
+    "chunks": 89,
+    "active_memory": 4625253436,
+    "peak_memory": 5231211091
+  },
+  {
+    "kind": "long",
+    "rate": 1,
+    "seconds": 29.790020207990892,
+    "audio_seconds": 28.32,
+    "first_chunk_seconds": 0.4557242910377681,
+    "chunks": 89,
+    "active_memory": 4625253436,
+    "peak_memory": 5231179331
+  },
+  {
+    "kind": "speed",
+    "rate": 0.9,
+    "seconds": 8.705758749973029,
+    "audio_seconds": 8.266666666666666,
+    "first_chunk_seconds": null,
+    "chunks": 0,
+    "active_memory": 4625253436,
+    "peak_memory": 5176301161
+  }
+]

@@ -22,7 +22,7 @@ internal static class SidecarProtocol
     /// <summary>Bump when the message shape changes. The sidecar reports the
     /// version it speaks in its ready line, and a mismatch is a clear failure
     /// rather than a field silently missing.</summary>
-    public const int Version = 3;
+    public const int Version = 4;
 }
 
 /// <summary>A request to the sidecar.</summary>
@@ -74,6 +74,9 @@ internal sealed class SidecarRequest
     /// high-fidelity ICL clone requires both.</summary>
     [JsonPropertyName("voiceTexts")]
     public Dictionary<string, string>? VoiceTexts { get; init; }
+
+    [JsonPropertyName("stream")]
+    public bool Stream { get; init; }
 
     [JsonPropertyName("segments")]
     public SidecarSegment[]? Segments { get; init; }

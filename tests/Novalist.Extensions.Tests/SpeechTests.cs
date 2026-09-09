@@ -100,7 +100,7 @@ public sealed class SpeechTests : IDisposable
 
     /// <summary>The protocol the sidecar that ships speaks. A reply carrying
     /// any other number is a stale sidecar and is refused rather than used.</summary>
-    private const int SidecarProtocolVersion = 3;
+    private const int SidecarProtocolVersion = 4;
 
     private VoiceEngine Engine(params string[] replies)
         => new(() => new FakeChannel(replies), _work);
@@ -261,6 +261,30 @@ public sealed class SpeechTests : IDisposable
     }
 
     // ── Rendering ──
+
+    [Fact]
+    public async Task Render_StreamsPreviewChunksButYieldsOnlyTheCompleteClip()
+    {
+        var channel = new FakeChannel([
+            Ready(),
+            Clip("part-0.wav", "d:1").Replace("\"type\":\"clip\"", "\"type\":\"chunk\""),
+            Clip("part-1.wav", "d:1").Replace("\"type\":\"clip\"", "\"type\":\"chunk\""),
+            Clip("complete.wav", "d:1"),
+            JsonSerializer.Serialize(new { type = "done" })
+        ]);
+        var heard = new List<NarrationClip>();
+        var request = new NarrationRequest { AudioChunk = heard.Add };
+        var complete = new List<NarrationClip>();
+        await foreach (var clip in Engine(channel).RenderAsync(request))
+        {
+            Assert.Equal(2, heard.Count);
+            complete.Add(clip);
+        }
+        Assert.Single(complete);
+        Assert.All(heard, c => { Assert.Equal("d:1", c.Key); Assert.NotEmpty(c.Audio); });
+        Assert.False(File.Exists(Path.Combine(_work, "part-0.wav")));
+        Assert.True(JsonDocument.Parse(channel.Sent.Last()).RootElement.GetProperty("stream").GetBoolean());
+    }
 
     [Fact]
     public async Task Render_SendsPlainProseAndTheExactReferenceTranscript()

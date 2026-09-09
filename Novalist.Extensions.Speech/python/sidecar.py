@@ -34,7 +34,7 @@ import wave
 from dataclasses import dataclass, field
 from typing import Any
 
-PROTOCOL_VERSION = 3
+PROTOCOL_VERSION = 4
 
 
 def use_mlx() -> bool:
@@ -558,15 +558,26 @@ def do_render(engine: Engine, work: str, request: dict[str, Any]) -> None:
         try:
             reference_path = os.path.join(work, str(reference))
             prompt = clone_prompt(engine, model, voice_id, reference_path, transcript)
+            settings = dict(text=text, language=language, voice_clone_prompt=prompt,
+                            temperature=TEMPERATURE, subtalker_temperature=TEMPERATURE)
             with contextlib.redirect_stdout(sys.stderr):
-                wavs, sample_rate = model.generate_voice_clone(
-                    text=text,
-                    language=language,
-                    voice_clone_prompt=prompt,
-                    non_streaming_mode=True,
-                    temperature=TEMPERATURE,
-                    subtalker_temperature=TEMPERATURE,
-                )
+                if engine.device == "mlx":
+                    import numpy as np
+                    chunks = []
+                    # Stretch the complete waveform at non-default speeds: a
+                    # phase vocoder restarted every 320 ms creates audible seams.
+                    live = request.get("stream", False) and reading_rate(rate) == 1.0
+                    with contextlib.closing(model.stream_voice_clone(**settings)) as results:
+                        for part, (audio, sample_rate) in enumerate(results):
+                            chunks.append(audio)
+                            if live:
+                                name = "chunk-%s-%04d-%06d.wav" % (CURRENT_ID or "x", index, part)
+                                duration = write_wav(os.path.join(work, name), audio, sample_rate)
+                                emit(type="chunk", key=key, file=name,
+                                     sampleRate=sample_rate, durationMs=duration)
+                    wavs = [np.concatenate(chunks)] if chunks else []
+                else:
+                    wavs, sample_rate = model.generate_voice_clone(non_streaming_mode=True, **settings)
             if not wavs:
                 raise RuntimeError("generated no audio")
             wav = stretch(wavs[0], rate)

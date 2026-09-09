@@ -61,7 +61,7 @@ public sealed class SpeechExtension :
         "Designs a voice for each character from their Codex entry and reads your book "
         + "in it, with delivery inferred naturally from the prose. Runs on your machine.";
 
-    public string Version => "2.0.2";
+    public string Version => "2.0.3";
 
     public string Author => "Novalist Team";
 

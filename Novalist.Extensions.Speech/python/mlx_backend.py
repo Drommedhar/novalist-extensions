@@ -45,11 +45,11 @@ class MlxQwenModel:
         return ClonePrompt(load_audio(ref_audio, sample_rate=self.model.sample_rate), ref_text)
 
     @staticmethod
-    def _audio(results):
+    def _chunks(results):
         import mlx.core as mx
         import numpy as np
 
-        wavs = []
+        found = False
         sample_rate = None
         for result in results:
             mx.eval(result.audio)
@@ -59,10 +59,16 @@ class MlxQwenModel:
             if sample_rate is not None and result.sample_rate != sample_rate:
                 raise RuntimeError("MLX sample rate changed within a passage")
             sample_rate = result.sample_rate
-            wavs.append(audio)
-        if not wavs:
+            found = True
+            yield audio, sample_rate
+        if not found:
             raise RuntimeError("MLX generated no audio")
-        return [np.concatenate(wavs)], sample_rate
+
+    @staticmethod
+    def _audio(results):
+        import numpy as np
+        chunks = list(MlxQwenModel._chunks(results))
+        return [np.concatenate([audio for audio, _ in chunks])], chunks[0][1]
 
     def generate_voice_design(self, *, text, language, instruct, temperature, subtalker_temperature):
         return self._audio(self.model.generate_voice_design(
@@ -75,22 +81,33 @@ class MlxQwenModel:
         if temperature != subtalker_temperature:
             raise ValueError("MLX requires matching talker and subtalker temperatures")
         return dict(temperature=temperature, top_k=50, top_p=1.0,
-                    repetition_penalty=1.05, max_tokens=8192, stream=False, verbose=False)
+                    repetition_penalty=1.05, max_tokens=8192, stream=True, streaming_interval=0.32, verbose=False)
 
     def generate_voice_clone(self, *, text, language, voice_clone_prompt,
                              non_streaming_mode, temperature, subtalker_temperature):
         if not non_streaming_mode:
             raise ValueError("the sidecar returns complete passages")
+        import numpy as np
+        chunks = list(self.stream_voice_clone(
+            text=text, language=language, voice_clone_prompt=voice_clone_prompt,
+            temperature=temperature, subtalker_temperature=subtalker_temperature))
+        return [np.concatenate([audio for audio, _ in chunks])], chunks[0][1]
+
+    def stream_voice_clone(self, *, text, language, voice_clone_prompt,
+                           temperature, subtalker_temperature):
         prompt = voice_clone_prompt
         self.model._icl_cache = prompt.cache
         try:
             # Public generate() forces repetition_penalty >= 1.5. This pinned
             # ICL entry point keeps the same 1.05 behavior as qwen-tts 0.1.1.
-            return self._audio(self.model._generate_icl(
+            yield from self._chunks(self.model._generate_icl(
                 text=text, language=language, ref_audio=prompt.audio, ref_text=prompt.text,
                 **self._sampling(temperature, subtalker_temperature)))
         finally:
             self.model._icl_cache = {}
+            # Upstream cleanup follows its final yield, so also reset when a
+            # consumer closes the generator or decoding raises mid-passage.
+            self.model.speech_tokenizer.decoder.reset_streaming_state()
 
 
 def download_checkpoint(model_id, detail, progress_factory):
