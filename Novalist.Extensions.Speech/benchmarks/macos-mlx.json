@@ -1,0 +1,1793 @@
+{
+  "hardware": {
+    "chip": "Apple M5 Pro",
+    "memory_gib": 48,
+    "macos": "26.5.2"
+  },
+  "cases": {
+    "final-torch": {
+      "mode": "clone",
+      "dtype": "torch.bfloat16",
+      "device": "mps",
+      "torch": "2.13.0",
+      "macos": "26.5.2",
+      "architecture": "arm64",
+      "revision": "fd4b254389122332181a7c3db7f27e918eec64e3",
+      "language": "de",
+      "runs": [
+        {
+          "index": 0,
+          "cold": true,
+          "seconds": 15.78318470902741,
+          "audio_seconds": 7.44,
+          "real_time_factor": 2.121395794224114,
+          "peak": 0.58984375,
+          "rms": 0.07371513545513153,
+          "mps_allocated_bytes": 4232301312,
+          "mps_driver_bytes": 8584151040
+        },
+        {
+          "index": 1,
+          "cold": false,
+          "seconds": 15.461100292042829,
+          "audio_seconds": 7.44,
+          "real_time_factor": 2.078104877962746,
+          "peak": 0.58984375,
+          "rms": 0.07371513545513153,
+          "mps_allocated_bytes": 4232160000,
+          "mps_driver_bytes": 8584151040
+        },
+        {
+          "index": 2,
+          "cold": false,
+          "seconds": 16.02007337496616,
+          "audio_seconds": 7.44,
+          "real_time_factor": 2.153235668678247,
+          "peak": 0.58984375,
+          "rms": 0.07371513545513153,
+          "mps_allocated_bytes": 4232160000,
+          "mps_driver_bytes": 8584151040
+        }
+      ],
+      "inference_mode": false,
+      "profiled": false,
+      "prefer_metal": "0",
+      "load_seconds": 1.2124649999896064,
+      "parameter_bytes": 3857354880,
+      "prompt_seconds": 0.46681387501303107,
+      "text": "Am n\u00e4chsten Morgen \u00f6ffnete sie das Fenster. Die Stra\u00dfe war still, und aus dem Garten kam der Duft von frischem Regen.",
+      "reference_sha256": "47f6d93b57e20639b8d0c44e70fa08e9aa06adcd8a617db09f02d2745224b8ce"
+    },
+    "final-mlx": {
+      "backend": "mlx",
+      "mode": "clone",
+      "api": "matched",
+      "model": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16",
+      "revision": "a6eb4f68e4b056f1215157bb696209bc82a6db48",
+      "passage": "short",
+      "text": "Am n\u00e4chsten Morgen \u00f6ffnete sie das Fenster. Die Stra\u00dfe war still, und aus dem Garten kam der Duft von frischem Regen.",
+      "reference_sha256": "47f6d93b57e20639b8d0c44e70fa08e9aa06adcd8a617db09f02d2745224b8ce",
+      "versions": {
+        "mlx": "0.32.2",
+        "mlx-audio": "0.5.3",
+        "mlx-metal": "0.32.2",
+        "transformers": "5.16.1",
+        "numpy": "2.5.3"
+      },
+      "python": "3.12.12",
+      "macos": "26.5.2",
+      "architecture": "arm64",
+      "stream": false,
+      "interval": 0.32,
+      "seed": 42,
+      "temperature": 0.9,
+      "top_k": 50,
+      "top_p": 1.0,
+      "max_tokens": 8192,
+      "repetition_penalty": 1.05,
+      "runs": [
+        {
+          "index": 0,
+          "first_in_process": true,
+          "seconds": 7.6752044580644,
+          "audio_seconds": 7.44,
+          "real_time_factor": 1.0316135024280106,
+          "first_audio_seconds": 7.659363999962807,
+          "chunks": [
+            {
+              "seconds": 7.659363999962807,
+              "audio_seconds": 7.44
+            }
+          ],
+          "required_extra_buffer_seconds": 0.0,
+          "tokens": 93,
+          "peak": 0.6140453815460205,
+          "rms": 0.0693918988108635,
+          "active_memory_bytes": 4626990140,
+          "peak_memory_bytes": 10192478435
+        },
+        {
+          "index": 1,
+          "first_in_process": false,
+          "seconds": 7.613086000084877,
+          "audio_seconds": 7.44,
+          "real_time_factor": 1.023264247323236,
+          "first_audio_seconds": 7.599369666073471,
+          "chunks": [
+            {
+              "seconds": 7.599369666073471,
+              "audio_seconds": 7.44
+            }
+          ],
+          "required_extra_buffer_seconds": 0.0,
+          "tokens": 93,
+          "peak": 0.6140453815460205,
+          "rms": 0.0693918988108635,
+          "active_memory_bytes": 4626990140,
+          "peak_memory_bytes": 10194247911
+        },
+        {
+          "index": 2,
+          "first_in_process": false,
+          "seconds": 7.757842290913686,
+          "audio_seconds": 7.44,
+          "real_time_factor": 1.042720738026033,
+          "first_audio_seconds": 7.7449343329062685,
+          "chunks": [
+            {
+              "seconds": 7.7449343329062685,
+              "audio_seconds": 7.44
+            }
+          ],
+          "required_extra_buffer_seconds": 0.0,
+          "tokens": 93,
+          "peak": 0.6140453815460205,
+          "rms": 0.0693918988108635,
+          "active_memory_bytes": 4626990140,
+          "peak_memory_bytes": 10194247911
+        }
+      ],
+      "load_seconds": 1.6926327080000192,
+      "parameter_bytes_by_dtype": {
+        "mlx.core.bfloat16": 3857354880,
+        "mlx.core.float32": 682098692
+      }
+    },
+    "torch-short": {
+      "mode": "clone",
+      "dtype": "torch.bfloat16",
+      "device": "mps",
+      "torch": "2.13.0",
+      "macos": "26.5.2",
+      "architecture": "arm64",
+      "revision": "fd4b254389122332181a7c3db7f27e918eec64e3",
+      "language": "de",
+      "runs": [
+        {
+          "index": 0,
+          "cold": true,
+          "seconds": 16.928789749974385,
+          "audio_seconds": 7.44,
+          "real_time_factor": 2.2753749663944065,
+          "peak": 0.58984375,
+          "rms": 0.07371513545513153,
+          "mps_allocated_bytes": 4232301312,
+          "mps_driver_bytes": 8584167424
+        },
+        {
+          "index": 1,
+          "cold": false,
+          "seconds": 16.669227084028535,
+          "audio_seconds": 7.44,
+          "real_time_factor": 2.2404875112941576,
+          "peak": 0.58984375,
+          "rms": 0.07371513545513153,
+          "mps_allocated_bytes": 4232160000,
+          "mps_driver_bytes": 8584167424
+        },
+        {
+          "index": 2,
+          "cold": false,
+          "seconds": 16.466571208904497,
+          "audio_seconds": 7.44,
+          "real_time_factor": 2.213248818401142,
+          "peak": 0.58984375,
+          "rms": 0.07371513545513153,
+          "mps_allocated_bytes": 4232160000,
+          "mps_driver_bytes": 8584167424
+        }
+      ],
+      "inference_mode": false,
+      "profiled": false,
+      "prefer_metal": "0",
+      "load_seconds": 1.902360500069335,
+      "parameter_bytes": 3857354880,
+      "prompt_seconds": 0.5444332499755546,
+      "text": "Am n\u00e4chsten Morgen \u00f6ffnete sie das Fenster. Die Stra\u00dfe war still, und aus dem Garten kam der Duft von frischem Regen.",
+      "reference_sha256": "47f6d93b57e20639b8d0c44e70fa08e9aa06adcd8a617db09f02d2745224b8ce"
+    },
+    "torch-long": {
+      "mode": "clone",
+      "dtype": "torch.bfloat16",
+      "device": "mps",
+      "torch": "2.13.0",
+      "macos": "26.5.2",
+      "architecture": "arm64",
+      "revision": "fd4b254389122332181a7c3db7f27e918eec64e3",
+      "language": "de",
+      "runs": [
+        {
+          "index": 0,
+          "cold": true,
+          "seconds": 66.45010770799126,
+          "audio_seconds": 29.36,
+          "real_time_factor": 2.2632870472749067,
+          "peak": 0.6484375,
+          "rms": 0.06986375153064728,
+          "mps_allocated_bytes": 4232301312,
+          "mps_driver_bytes": 27869954048
+        },
+        {
+          "index": 1,
+          "cold": false,
+          "seconds": 55.298016625107266,
+          "audio_seconds": 29.36,
+          "real_time_factor": 1.883447432735261,
+          "peak": 0.6484375,
+          "rms": 0.06986375153064728,
+          "mps_allocated_bytes": 4232160000,
+          "mps_driver_bytes": 27869954048
+        }
+      ],
+      "inference_mode": false,
+      "profiled": false,
+      "prefer_metal": "0",
+      "load_seconds": 1.2270399169065058,
+      "parameter_bytes": 3857354880,
+      "prompt_seconds": 0.4950355830369517,
+      "text": "Am n\u00e4chsten Morgen \u00f6ffnete sie das Fenster. Die Stra\u00dfe war still, und aus dem Garten kam der Duft von frischem Regen. Auf dem Tisch lag noch immer der Brief, den sie am Abend nicht hatte \u00f6ffnen wollen. Jetzt nahm sie ihn in die Hand und setzte sich ans Licht. Drau\u00dfen fuhr ein Fahrrad vorbei, irgendwo schlug eine T\u00fcr. Sie faltete das Papier auseinander und begann zu lesen. Nach den ersten Zeilen hielt sie inne. Dann las sie weiter, langsam und aufmerksam, w\u00e4hrend die Sonne \u00fcber die D\u00e4cher stieg.",
+      "reference_sha256": "47f6d93b57e20639b8d0c44e70fa08e9aa06adcd8a617db09f02d2745224b8ce"
+    },
+    "clone-public": {
+      "backend": "mlx",
+      "mode": "clone",
+      "api": "public",
+      "model": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16",
+      "revision": "a6eb4f68e4b056f1215157bb696209bc82a6db48",
+      "passage": "short",
+      "text": "Am n\u00e4chsten Morgen \u00f6ffnete sie das Fenster. Die Stra\u00dfe war still, und aus dem Garten kam der Duft von frischem Regen.",
+      "reference_sha256": "47f6d93b57e20639b8d0c44e70fa08e9aa06adcd8a617db09f02d2745224b8ce",
+      "versions": {
+        "mlx": "0.32.2",
+        "mlx-audio": "0.5.3",
+        "mlx-metal": "0.32.2",
+        "transformers": "5.16.1",
+        "numpy": "2.5.3"
+      },
+      "python": "3.12.12",
+      "macos": "26.5.2",
+      "architecture": "arm64",
+      "stream": false,
+      "interval": 0.32,
+      "seed": 42,
+      "temperature": 0.9,
+      "top_k": 50,
+      "top_p": 1.0,
+      "max_tokens": 8192,
+      "repetition_penalty": 1.5,
+      "runs": [
+        {
+          "index": 0,
+          "first_in_process": true,
+          "seconds": 13.258310209028423,
+          "audio_seconds": 7.28,
+          "real_time_factor": 1.821196457284124,
+          "first_audio_seconds": 13.223687499994412,
+          "chunks": [
+            {
+              "seconds": 13.223687499994412,
+              "audio_seconds": 7.28
+            }
+          ],
+          "required_extra_buffer_seconds": 0.0,
+          "tokens": 91,
+          "peak": 0.6229627728462219,
+          "rms": 0.07088039815425873,
+          "active_memory_bytes": 4627006524,
+          "peak_memory_bytes": 10146373911
+        },
+        {
+          "index": 1,
+          "first_in_process": false,
+          "seconds": 7.9967923749936745,
+          "audio_seconds": 7.28,
+          "real_time_factor": 1.0984604910705595,
+          "first_audio_seconds": 7.979835334001109,
+          "chunks": [
+            {
+              "seconds": 7.979835334001109,
+              "audio_seconds": 7.28
+            }
+          ],
+          "required_extra_buffer_seconds": 0.0,
+          "tokens": 91,
+          "peak": 0.6229627728462219,
+          "rms": 0.07088039815425873,
+          "active_memory_bytes": 4627006524,
+          "peak_memory_bytes": 10148127003
+        },
+        {
+          "index": 2,
+          "first_in_process": false,
+          "seconds": 8.002192292013206,
+          "audio_seconds": 7.28,
+          "real_time_factor": 1.099202237913902,
+          "first_audio_seconds": 7.986697999993339,
+          "chunks": [
+            {
+              "seconds": 7.986697999993339,
+              "audio_seconds": 7.28
+            }
+          ],
+          "required_extra_buffer_seconds": 0.0,
+          "tokens": 91,
+          "peak": 0.6229627728462219,
+          "rms": 0.07088039815425873,
+          "active_memory_bytes": 4627006524,
+          "peak_memory_bytes": 10148127003
+        }
+      ],
+      "load_seconds": 13.296274541993625,
+      "parameter_bytes_by_dtype": {
+        "mlx.core.bfloat16": 3857354880,
+        "mlx.core.float32": 682098692
+      }
+    },
+    "clone-matched": {
+      "backend": "mlx",
+      "mode": "clone",
+      "api": "matched",
+      "model": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16",
+      "revision": "a6eb4f68e4b056f1215157bb696209bc82a6db48",
+      "passage": "short",
+      "text": "Am n\u00e4chsten Morgen \u00f6ffnete sie das Fenster. Die Stra\u00dfe war still, und aus dem Garten kam der Duft von frischem Regen.",
+      "reference_sha256": "47f6d93b57e20639b8d0c44e70fa08e9aa06adcd8a617db09f02d2745224b8ce",
+      "versions": {
+        "mlx": "0.32.2",
+        "mlx-audio": "0.5.3",
+        "mlx-metal": "0.32.2",
+        "transformers": "5.16.1",
+        "numpy": "2.5.3"
+      },
+      "python": "3.12.12",
+      "macos": "26.5.2",
+      "architecture": "arm64",
+      "stream": false,
+      "interval": 0.32,
+      "seed": 42,
+      "temperature": 0.9,
+      "top_k": 50,
+      "top_p": 1.0,
+      "max_tokens": 8192,
+      "repetition_penalty": 1.05,
+      "runs": [
+        {
+          "index": 0,
+          "first_in_process": true,
+          "seconds": 8.24352266592905,
+          "audio_seconds": 7.44,
+          "real_time_factor": 1.108000358323797,
+          "first_audio_seconds": 8.225278583006002,
+          "chunks": [
+            {
+              "seconds": 8.225278583006002,
+              "audio_seconds": 7.44
+            }
+          ],
+          "required_extra_buffer_seconds": 0.0,
+          "tokens": 93,
+          "peak": 0.6140453815460205,
+          "rms": 0.0693918988108635,
+          "active_memory_bytes": 4626990140,
+          "peak_memory_bytes": 10192478435
+        },
+        {
+          "index": 1,
+          "first_in_process": false,
+          "seconds": 8.071579582989216,
+          "audio_seconds": 7.44,
+          "real_time_factor": 1.0848897288964,
+          "first_audio_seconds": 8.058853625087067,
+          "chunks": [
+            {
+              "seconds": 8.058853625087067,
+              "audio_seconds": 7.44
+            }
+          ],
+          "required_extra_buffer_seconds": 0.0,
+          "tokens": 93,
+          "peak": 0.6140453815460205,
+          "rms": 0.0693918988108635,
+          "active_memory_bytes": 4626990140,
+          "peak_memory_bytes": 10194247911
+        },
+        {
+          "index": 2,
+          "first_in_process": false,
+          "seconds": 8.220772915985435,
+          "audio_seconds": 7.44,
+          "real_time_factor": 1.1049425962346016,
+          "first_audio_seconds": 8.19722233293578,
+          "chunks": [
+            {
+              "seconds": 8.19722233293578,
+              "audio_seconds": 7.44
+            }
+          ],
+          "required_extra_buffer_seconds": 0.0,
+          "tokens": 93,
+          "peak": 0.6140453815460205,
+          "rms": 0.0693918988108635,
+          "active_memory_bytes": 4626990140,
+          "peak_memory_bytes": 10194247911
+        }
+      ],
+      "load_seconds": 1.2035000410396606,
+      "parameter_bytes_by_dtype": {
+        "mlx.core.bfloat16": 3857354880,
+        "mlx.core.float32": 682098692
+      }
+    },
+    "clone-stream": {
+      "backend": "mlx",
+      "mode": "clone",
+      "api": "matched",
+      "model": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16",
+      "revision": "a6eb4f68e4b056f1215157bb696209bc82a6db48",
+      "passage": "short",
+      "text": "Am n\u00e4chsten Morgen \u00f6ffnete sie das Fenster. Die Stra\u00dfe war still, und aus dem Garten kam der Duft von frischem Regen.",
+      "reference_sha256": "47f6d93b57e20639b8d0c44e70fa08e9aa06adcd8a617db09f02d2745224b8ce",
+      "versions": {
+        "mlx": "0.32.2",
+        "mlx-audio": "0.5.3",
+        "mlx-metal": "0.32.2",
+        "transformers": "5.16.1",
+        "numpy": "2.5.3"
+      },
+      "python": "3.12.12",
+      "macos": "26.5.2",
+      "architecture": "arm64",
+      "stream": true,
+      "interval": 0.32,
+      "seed": 42,
+      "temperature": 0.9,
+      "top_k": 50,
+      "top_p": 1.0,
+      "max_tokens": 8192,
+      "repetition_penalty": 1.05,
+      "runs": [
+        {
+          "index": 0,
+          "first_in_process": true,
+          "seconds": 8.081162958056666,
+          "audio_seconds": 7.44,
+          "real_time_factor": 1.0861778169431002,
+          "first_audio_seconds": 0.5533994169672951,
+          "chunks": [
+            {
+              "seconds": 0.5533994169672951,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 0.8689851249800995,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.2127364580519497,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.5379701670026407,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.860911582945846,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.1914048329927027,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.535109458025545,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.866585416952148,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.2004410000517964,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.5423224580008537,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.8745269579812884,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.191913333022967,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.518678957945667,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.835224500042386,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.1665382500505075,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.496520875021815,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.825774417025968,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.15767537499778,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.491256708046421,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.8325720420107245,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.166189708048478,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.485825874959119,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.833233957993798,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 8.06836829194799,
+              "audio_seconds": 0.08
+            }
+          ],
+          "required_extra_buffer_seconds": 0.23983454102650104,
+          "tokens": 93,
+          "peak": 0.6052799820899963,
+          "rms": 0.06891705095767975,
+          "active_memory_bytes": 4625228860,
+          "peak_memory_bytes": 5813970216
+        },
+        {
+          "index": 1,
+          "first_in_process": false,
+          "seconds": 7.88620449998416,
+          "audio_seconds": 7.44,
+          "real_time_factor": 1.0599737231161506,
+          "first_audio_seconds": 0.40710316598415375,
+          "chunks": [
+            {
+              "seconds": 0.40710316598415375,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 0.7352835829369724,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.0671350830234587,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.4165491659659892,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.7496320829959586,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.0790826249867678,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.4175267500104383,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.7439895409625024,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.074668125016615,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.402413749950938,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.7426935409894213,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.075186125002801,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.4175446659792215,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.751439415966161,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.071089625009336,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.408965541049838,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.741267916047946,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.071780040976591,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.402057916042395,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.733581291045994,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.061265124939382,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.3859431659802794,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.708190958015621,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.879573583020829,
+              "audio_seconds": 0.08
+            }
+          ],
+          "required_extra_buffer_seconds": 0.26108779203146515,
+          "tokens": 93,
+          "peak": 0.6052799820899963,
+          "rms": 0.06891705095767975,
+          "active_memory_bytes": 4625228860,
+          "peak_memory_bytes": 5176247997
+        },
+        {
+          "index": 2,
+          "first_in_process": false,
+          "seconds": 7.870766583015211,
+          "audio_seconds": 7.44,
+          "real_time_factor": 1.057898734276238,
+          "first_audio_seconds": 0.40252691705245525,
+          "chunks": [
+            {
+              "seconds": 0.40252691705245525,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 0.7342512080213055,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.062742333044298,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.3962889580288902,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.7242322920355946,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.059759333031252,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.394358583027497,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.736193708027713,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.080391583032906,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.4127782500581816,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.7549058330478147,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.077398875029758,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.40421279205475,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.735796583001502,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.06800283305347,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.395970792043954,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.712783082970418,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.043114500003867,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.37153320806101,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.703922625049017,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.035539458040148,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.368767958017997,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.696528917062096,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.86519391706679,
+              "audio_seconds": 0.08
+            }
+          ],
+          "required_extra_buffer_seconds": 0.25400200000963924,
+          "tokens": 93,
+          "peak": 0.6052799820899963,
+          "rms": 0.06891705095767975,
+          "active_memory_bytes": 4625228860,
+          "peak_memory_bytes": 5176248867
+        }
+      ],
+      "load_seconds": 1.0873159170150757,
+      "parameter_bytes_by_dtype": {
+        "mlx.core.bfloat16": 3857354880,
+        "mlx.core.float32": 682098692
+      }
+    },
+    "clone-long": {
+      "backend": "mlx",
+      "mode": "clone",
+      "api": "matched",
+      "model": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16",
+      "revision": "a6eb4f68e4b056f1215157bb696209bc82a6db48",
+      "passage": "long",
+      "text": "Am n\u00e4chsten Morgen \u00f6ffnete sie das Fenster. Die Stra\u00dfe war still, und aus dem Garten kam der Duft von frischem Regen. Auf dem Tisch lag noch immer der Brief, den sie am Abend nicht hatte \u00f6ffnen wollen. Jetzt nahm sie ihn in die Hand und setzte sich ans Licht. Drau\u00dfen fuhr ein Fahrrad vorbei, irgendwo schlug eine T\u00fcr. Sie faltete das Papier auseinander und begann zu lesen. Nach den ersten Zeilen hielt sie inne. Dann las sie weiter, langsam und aufmerksam, w\u00e4hrend die Sonne \u00fcber die D\u00e4cher stieg.",
+      "reference_sha256": "47f6d93b57e20639b8d0c44e70fa08e9aa06adcd8a617db09f02d2745224b8ce",
+      "versions": {
+        "mlx": "0.32.2",
+        "mlx-audio": "0.5.3",
+        "mlx-metal": "0.32.2",
+        "transformers": "5.16.1",
+        "numpy": "2.5.3"
+      },
+      "python": "3.12.12",
+      "macos": "26.5.2",
+      "architecture": "arm64",
+      "stream": false,
+      "interval": 0.32,
+      "seed": 42,
+      "temperature": 0.9,
+      "top_k": 50,
+      "top_p": 1.0,
+      "max_tokens": 8192,
+      "repetition_penalty": 1.05,
+      "runs": [
+        {
+          "index": 0,
+          "first_in_process": true,
+          "seconds": 28.846716250060126,
+          "audio_seconds": 28.32,
+          "real_time_factor": 1.018598737643366,
+          "first_audio_seconds": 28.76561624999158,
+          "chunks": [
+            {
+              "seconds": 28.76561624999158,
+              "audio_seconds": 28.32
+            }
+          ],
+          "required_extra_buffer_seconds": 0.0,
+          "tokens": 354,
+          "peak": 0.7207785248756409,
+          "rms": 0.07349967956542969,
+          "active_memory_bytes": 4629005372,
+          "peak_memory_bytes": 10827292473
+        },
+        {
+          "index": 1,
+          "first_in_process": false,
+          "seconds": 29.017168208025396,
+          "audio_seconds": 28.32,
+          "real_time_factor": 1.0246175214698232,
+          "first_audio_seconds": 28.952554458053783,
+          "chunks": [
+            {
+              "seconds": 28.952554458053783,
+              "audio_seconds": 28.32
+            }
+          ],
+          "required_extra_buffer_seconds": 0.0,
+          "tokens": 354,
+          "peak": 0.7207785248756409,
+          "rms": 0.07349967956542969,
+          "active_memory_bytes": 4629005372,
+          "peak_memory_bytes": 10831077177
+        }
+      ],
+      "load_seconds": 1.0751383330207318,
+      "parameter_bytes_by_dtype": {
+        "mlx.core.bfloat16": 3857354880,
+        "mlx.core.float32": 682098692
+      }
+    },
+    "clone-long-stream": {
+      "backend": "mlx",
+      "mode": "clone",
+      "api": "matched",
+      "model": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16",
+      "revision": "a6eb4f68e4b056f1215157bb696209bc82a6db48",
+      "passage": "long",
+      "text": "Am n\u00e4chsten Morgen \u00f6ffnete sie das Fenster. Die Stra\u00dfe war still, und aus dem Garten kam der Duft von frischem Regen. Auf dem Tisch lag noch immer der Brief, den sie am Abend nicht hatte \u00f6ffnen wollen. Jetzt nahm sie ihn in die Hand und setzte sich ans Licht. Drau\u00dfen fuhr ein Fahrrad vorbei, irgendwo schlug eine T\u00fcr. Sie faltete das Papier auseinander und begann zu lesen. Nach den ersten Zeilen hielt sie inne. Dann las sie weiter, langsam und aufmerksam, w\u00e4hrend die Sonne \u00fcber die D\u00e4cher stieg.",
+      "reference_sha256": "47f6d93b57e20639b8d0c44e70fa08e9aa06adcd8a617db09f02d2745224b8ce",
+      "versions": {
+        "mlx": "0.32.2",
+        "mlx-audio": "0.5.3",
+        "mlx-metal": "0.32.2",
+        "transformers": "5.16.1",
+        "numpy": "2.5.3"
+      },
+      "python": "3.12.12",
+      "macos": "26.5.2",
+      "architecture": "arm64",
+      "stream": true,
+      "interval": 0.32,
+      "seed": 42,
+      "temperature": 0.9,
+      "top_k": 50,
+      "top_p": 1.0,
+      "max_tokens": 8192,
+      "repetition_penalty": 1.05,
+      "runs": [
+        {
+          "index": 0,
+          "first_in_process": true,
+          "seconds": 18.322478124988265,
+          "audio_seconds": 28.32,
+          "real_time_factor": 0.646980159780659,
+          "first_audio_seconds": 0.2815792909823358,
+          "chunks": [
+            {
+              "seconds": 0.2815792909823358,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 0.5499995410209522,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 0.8625636659562588,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.1743276249617338,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.3941444579977542,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.6402956659439951,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.8261011659633368,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.9437282499857247,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.0607776659308,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.1774719159584492,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.4719369580270723,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.772196708014235,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.0491223329445347,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.166675499989651,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.283751833019778,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.400581541005522,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.517651458038017,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.634518999955617,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.7515950410161167,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.019722457975149,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.332732915994711,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.6567299999296665,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.974255374982022,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.28803766600322,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.597734207985923,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.923507374944165,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.235957541037351,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.564342833007686,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.894222500035539,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.216181457974017,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.525343499961309,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.838977540959604,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 8.134293415932916,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 8.357920665992424,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 8.672263375017792,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 8.98324945801869,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 9.310624541016296,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 9.503795207943767,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 9.64454587502405,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 9.963276708032936,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 10.280720165930688,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 10.536132041015662,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 10.654544749995694,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 10.771751957945526,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 10.88928337499965,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 11.006441915989853,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 11.12535804102663,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 11.242694707936607,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 11.360104291001335,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 11.477263499982655,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 11.594803291023709,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 11.788014124962501,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 12.098408707999624,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 12.412235958036035,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 12.649080000002868,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 12.896695540985093,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 13.01469045795966,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 13.132539249956608,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 13.25026970799081,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 13.368212625035085,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 13.485549708013423,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 13.685304290964268,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 13.964458249974996,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 14.178036957979202,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 14.373599915998057,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 14.688869290985167,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 15.000366915948689,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 15.3112482909346,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 15.607031582971103,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 15.91486229095608,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 16.059503208030947,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 16.17739762493875,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 16.295259958016686,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 16.421787458006293,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 16.541233291034587,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 16.65966808295343,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 16.77800616598688,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 16.904438165947795,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 17.023226040997542,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 17.141643457929604,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 17.259496290935203,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 17.3858846250223,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 17.59385633294005,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 17.723174458020367,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 17.84921591600869,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 17.967453874996863,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 18.0943060410209,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 18.22052316600457,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 18.3104762500152,
+              "audio_seconds": 0.16
+            }
+          ],
+          "required_extra_buffer_seconds": 0.0,
+          "tokens": 354,
+          "peak": 0.7211787700653076,
+          "rms": 0.07317197322845459,
+          "active_memory_bytes": 4625286204,
+          "peak_memory_bytes": 5814019368
+        },
+        {
+          "index": 1,
+          "first_in_process": false,
+          "seconds": 11.023540749913082,
+          "audio_seconds": 28.32,
+          "real_time_factor": 0.3892493202652924,
+          "first_audio_seconds": 0.1719324579462409,
+          "chunks": [
+            {
+              "seconds": 0.1719324579462409,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 0.2970617499668151,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 0.42146329092793167,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 0.539470374933444,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 0.6641876659123227,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 0.783022707910277,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 0.9043707079254091,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.029373541008681,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.1553999159950763,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.2774825829546899,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.4007647909456864,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.5426634160103276,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.668223207932897,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.8163586659356952,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 1.9421851659426466,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.0676966659957543,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.193311040988192,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.3130188329378143,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.4313867909368128,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.556521915947087,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.6742126250173897,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.7999218329787254,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 2.9402639999752864,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.066018500016071,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.191714874934405,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.3093064159620553,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.4343527909368277,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.559268333017826,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.677779124933295,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.802835915936157,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 3.9278637499082834,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.045600207988173,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.173989790957421,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.291519749909639,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.416765499976464,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.542057332932018,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.660119624924846,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.777987540932372,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 4.902004958014004,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.0347570409066975,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.158939665998332,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.284823915921152,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.410242915968411,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.535173665964976,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.659602624946274,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.784226832911372,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 5.902973832911812,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.028159291017801,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.145693750004284,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.271068040980026,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.396262582973577,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.51459099992644,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.639746165950783,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.765335207921453,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 6.882929790997878,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.008476540911943,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.12669979094062,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.244675165973604,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.369745207950473,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.487435832968913,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.605234500020742,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.723501249914989,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.848808040958829,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 7.966736707952805,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 8.084437957964838,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 8.209887165925466,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 8.33600829099305,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 8.455704165971838,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 8.581413790932857,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 8.707060290966183,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 8.826157665927894,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 8.949596999911591,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 9.074439249932766,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 9.193082500016317,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 9.31118650001008,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 9.436811290914193,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 9.554654457955621,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 9.677096916013397,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 9.803261708002537,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 9.936701915925369,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 10.055618249927647,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 10.17354524997063,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 10.299735624925233,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 10.4178844159469,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 10.543989415979013,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 10.66232870798558,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 10.78844662499614,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 10.915867749950849,
+              "audio_seconds": 0.32
+            },
+            {
+              "seconds": 11.016887333011255,
+              "audio_seconds": 0.16
+            }
+          ],
+          "required_extra_buffer_seconds": 0.0,
+          "tokens": 354,
+          "peak": 0.7211787700653076,
+          "rms": 0.07317197322845459,
+          "active_memory_bytes": 4625286204,
+          "peak_memory_bytes": 5231204501
+        }
+      ],
+      "load_seconds": 1.648392166942358,
+      "parameter_bytes_by_dtype": {
+        "mlx.core.bfloat16": 3857354880,
+        "mlx.core.float32": 682098692
+      }
+    },
+    "design": {
+      "backend": "mlx",
+      "mode": "design",
+      "api": "public",
+      "model": "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-bf16",
+      "revision": "7d3824abff87e49756bb0f83fb5411de75d160c4",
+      "passage": "short",
+      "text": "So klingt meine nat\u00fcrliche Stimme. Ich spreche deutlich und in einem angenehmen Tempo. Nun werde ich die Geschichte ruhig und ungezwungen weitererz\u00e4hlen.",
+      "reference_sha256": null,
+      "versions": {
+        "mlx": "0.32.2",
+        "mlx-audio": "0.5.3",
+        "mlx-metal": "0.32.2",
+        "transformers": "5.16.1",
+        "numpy": "2.5.3"
+      },
+      "python": "3.12.12",
+      "macos": "26.5.2",
+      "architecture": "arm64",
+      "stream": false,
+      "interval": 0.32,
+      "seed": 42,
+      "temperature": 0.9,
+      "top_k": 50,
+      "top_p": 1.0,
+      "max_tokens": 8192,
+      "repetition_penalty": 1.05,
+      "runs": [
+        {
+          "index": 0,
+          "first_in_process": true,
+          "seconds": 10.123698207898997,
+          "audio_seconds": 10.16,
+          "real_time_factor": 0.9964269889664367,
+          "first_audio_seconds": 10.116241290932521,
+          "chunks": [
+            {
+              "seconds": 10.116241290932521,
+              "audio_seconds": 10.16
+            }
+          ],
+          "required_extra_buffer_seconds": 0.0,
+          "tokens": 127,
+          "peak": 0.754751443862915,
+          "rms": 0.10686816275119781,
+          "active_memory_bytes": 4583920864,
+          "peak_memory_bytes": 8498669939
+        },
+        {
+          "index": 1,
+          "first_in_process": false,
+          "seconds": 10.180855083046481,
+          "audio_seconds": 10.16,
+          "real_time_factor": 1.0020526656541813,
+          "first_audio_seconds": 10.171508040977642,
+          "chunks": [
+            {
+              "seconds": 10.171508040977642,
+              "audio_seconds": 10.16
+            }
+          ],
+          "required_extra_buffer_seconds": 0.0,
+          "tokens": 127,
+          "peak": 0.754751443862915,
+          "rms": 0.10686816275119781,
+          "active_memory_bytes": 4583920864,
+          "peak_memory_bytes": 8499620195
+        },
+        {
+          "index": 2,
+          "first_in_process": false,
+          "seconds": 10.26047970901709,
+          "audio_seconds": 10.16,
+          "real_time_factor": 1.0098897351394773,
+          "first_audio_seconds": 10.25103383406531,
+          "chunks": [
+            {
+              "seconds": 10.25103383406531,
+              "audio_seconds": 10.16
+            }
+          ],
+          "required_extra_buffer_seconds": 0.0,
+          "tokens": 127,
+          "peak": 0.754751443862915,
+          "rms": 0.10686816275119781,
+          "active_memory_bytes": 4583920864,
+          "peak_memory_bytes": 8499620195
+        }
+      ],
+      "load_seconds": 1.575307207996957,
+      "parameter_bytes_by_dtype": {
+        "mlx.core.bfloat16": 3833352704,
+        "mlx.core.float32": 682098692
+      }
+    }
+  },
+  "checkpoint_comparison": {
+    "Base": {
+      "model.safetensors": {
+        "verified": 480,
+        "transposed": 38,
+        "failures": [],
+        "extra_keys": []
+      },
+      "speech_tokenizer/model.safetensors": {
+        "verified": 496,
+        "transposed": 0,
+        "failures": [],
+        "extra_keys": []
+      }
+    },
+    "VoiceDesign": {
+      "model.safetensors": {
+        "verified": 404,
+        "transposed": 0,
+        "failures": [],
+        "extra_keys": []
+      },
+      "speech_tokenizer/model.safetensors": {
+        "verified": 496,
+        "transposed": 0,
+        "failures": [],
+        "extra_keys": []
+      }
+    }
+  },
+  "quality_note": "Whisper MLX transcription produced suspicious repeated suffixes; results are exploratory, not a reliable perceptual quality verdict."
+}

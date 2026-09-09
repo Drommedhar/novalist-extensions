@@ -69,7 +69,8 @@ of being silently read with English pronunciation.
    `%APPDATA%\Novalist\Extensions\Speech`.
 2. Open **Settings → Narration** or the cast rail in **Narration**.
 3. Choose **Prepare**. The first run creates an isolated Python environment and
-   downloads both Qwen checkpoints plus PyTorch. The dialog shows the active
+   downloads both Qwen checkpoints and the speech runtime (MLX on Apple Silicon
+   Macs, PyTorch elsewhere). The dialog shows the active
    checkpoint, transferred bytes, and percentage; a cancelled or interrupted
    checkpoint resumes from its partial Hugging Face cache.
 4. Design new character and narrator voices, listen, and keep the ones you want.
@@ -82,8 +83,10 @@ silently treated as Qwen voices.
 
 - Python 3.10–3.13. A suitable interpreter is used when present or fetched with
   [uv](https://github.com/astral-sh/uv) into the extension's private folder.
-- NVIDIA CUDA when available; CPU remains supported but is much slower.
-- About 16 GB of disk for the Python environment, model cache, and both 1.7B
+- Native Apple Silicon macOS uses MLX with BF16 Qwen weights. Windows, Linux,
+  and Intel/Rosetta macOS retain PyTorch, using CUDA or MPS where available
+  and CPU otherwise.
+- About 10 GB on Apple Silicon, or 16 GB elsewhere, for the environment and both 1.7B
   checkpoints. The model cache is kept under the extension data folder.
 - Enough memory for one checkpoint at a time. VoiceDesign and Base are unloaded
   before the other is loaded to keep peak VRAM bounded.
@@ -92,11 +95,30 @@ The Speed control is implemented after synthesis with pitch-preserving time
 stretching. It does not alter the reference voice or inject a pace phrase into
 the manuscript.
 
+### macOS performance
+
+Native Apple Silicon Macs use a separate `venv-mlx` environment and the
+unquantized BF16 MLX conversions of both Qwen checkpoints. An existing install
+needs **Prepare** once to fetch the new runtime and model files. The previous
+PyTorch environment and cache are retained; saved Qwen voices and their exact
+transcripts work without redesign.
+
+The adapter preserves the existing sampling settings, reference prompt cache,
+voice storage, and pitch-preserving speed control. Metal allocations are
+released when switching between voice design and narration. Each passage is
+returned after synthesis finishes; playback within a passage is not streamed.
+
+See [the MLX benchmark report](benchmarks/macos-mlx.md) for measured performance,
+weight comparison, quality limitations, and reproduction commands. The earlier
+[PyTorch BF16 benchmark](benchmarks/macos-m5-pro.md) is retained for comparison.
+
 ### Hugging Face downloads
 
 The weights come from the public Hugging Face repositories
 `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign` and
-`Qwen/Qwen3-TTS-12Hz-1.7B-Base`. No account is required. Under Novalist's
+`Qwen/Qwen3-TTS-12Hz-1.7B-Base` on PyTorch. MLX uses the corresponding
+`mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-bf16` and
+`mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16` repositories. No account is required. Under Novalist's
 extension settings, **Speech downloads** offers an optional masked Hugging Face
 token. It is passed to the Hub only through the sidecar's environment to avoid
 anonymous API rate limits; it is never put in a protocol message, command-line

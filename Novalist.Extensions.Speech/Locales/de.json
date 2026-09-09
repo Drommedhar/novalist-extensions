@@ -12,7 +12,7 @@
   "speech.step.ready": "Bereit",
   "speech.step.python": "Python wird gesucht",
   "speech.step.installing": "Wird installiert",
-  "speech.step.importing": "Python wird gestartet, torch wird geladen",
+  "speech.step.importing": "Sprachengine wird gestartet",
   "speech.step.cuda": "GPU-Build wird geladen — der größte Teil",
   "speech": {
     "noAnswer": "Die Sprachausgabe wurde gestartet, hat aber nie geantwortet. Schließen Sie Novalist und bereiten Sie sie erneut vor; falls das weiterhin auftritt, löschen Sie den Ordner der Erweiterung in Ihren Anwendungsdaten, damit sie neu aufgebaut wird."

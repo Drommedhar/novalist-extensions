@@ -61,7 +61,7 @@ public sealed class SpeechExtension :
         "Designs a voice for each character from their Codex entry and reads your book "
         + "in it, with delivery inferred naturally from the prose. Runs on your machine.";
 
-    public string Version => "2.0.1";
+    public string Version => "2.0.2";
 
     public string Author => "Novalist Team";
 
@@ -74,7 +74,7 @@ public sealed class SpeechExtension :
         _huggingFaceToken = ReadHubToken(root);
         _sidecarDir = Path.Combine(root, "python");
         Unpack(_sidecarDir);
-        _python = new PythonEnvironment(root);
+        _python = new PythonEnvironment(root, SpeechRuntime.UseMlx);
         _engine = new VoiceEngine(
             () => new ProcessSidecarChannel(
                 _python.VenvPython,
@@ -198,7 +198,7 @@ public sealed class SpeechExtension :
         VoiceEngineFeatures.DesignFromDescription
         | VoiceEngineFeatures.EmotionInferred
         | VoiceEngineFeatures.Streaming
-        | VoiceEngineFeatures.RunsOnCpu;
+        | (SpeechRuntime.UseMlx ? VoiceEngineFeatures.None : VoiceEngineFeatures.RunsOnCpu);
 
     public Task<VoiceEngineStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
@@ -412,14 +412,14 @@ public sealed class SpeechExtension :
     /// depends on the machine's CUDA build, and a precise-looking number that is
     /// wrong is worse than an honest estimate.
     /// </summary>
-    private const long ApproximateDownloadBytes = 16L * 1024 * 1024 * 1024;
+    private static long ApproximateDownloadBytes => (SpeechRuntime.UseMlx ? 10L : 16L) * 1024 * 1024 * 1024;
 
     private VoiceEngine Engine()
         => _engine ?? throw new InvalidOperationException("the speech extension is not initialised");
 
     private string SidecarScript() => Path.Combine(_sidecarDir, "sidecar.py");
 
-    private string RequirementsPath() => Path.Combine(_sidecarDir, "requirements.txt");
+    private string RequirementsPath() => Path.Combine(_sidecarDir, SpeechRuntime.RequirementsFile);
 
     /// <summary>
     /// Writes the sidecar out where it can be run.
@@ -448,7 +448,7 @@ public sealed class SpeechExtension :
         var firstRun = !File.Exists(stampPath);
         var written = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        foreach (var name in new[] { "sidecar.py", "requirements.txt" })
+        foreach (var name in new[] { "sidecar.py", "mlx_backend.py", "requirements.txt", "requirements-macos.txt" })
         {
             using var source = typeof(SpeechExtension).Assembly.GetManifestResourceStream(name);
             if (source == null)

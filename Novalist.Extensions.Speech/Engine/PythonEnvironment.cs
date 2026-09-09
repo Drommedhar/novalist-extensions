@@ -64,11 +64,16 @@ internal sealed class PythonEnvironment
     }
 
     private readonly string _root;
+    private readonly bool _useMlx;
 
-    public PythonEnvironment(string root) => _root = root;
+    public PythonEnvironment(string root, bool useMlx = false)
+    {
+        _root = root;
+        _useMlx = useMlx;
+    }
 
     /// <summary>Where the environment lives.</summary>
-    public string VenvPath => Path.Combine(_root, "venv");
+    public string VenvPath => Path.Combine(_root, _useMlx ? "venv-mlx" : "venv");
 
     /// <summary>The interpreter inside it.</summary>
     public string VenvPython => OperatingSystem.IsWindows()
@@ -99,7 +104,7 @@ internal sealed class PythonEnvironment
         return recipe.Length > 0 && File.Exists(VenvPython) && ReadMarker() == recipe;
     }
 
-    private string Marker => Path.Combine(_root, "installed.txt");
+    private string Marker => Path.Combine(_root, _useMlx ? "installed-mlx.txt" : "installed.txt");
 
     /// <summary>What the marker says was installed, or empty when nothing has
     /// been - including when it cannot be read, which comes to the same thing
@@ -230,7 +235,7 @@ internal sealed class PythonEnvironment
         // card could read a chapter in a minute waits an hour instead and is
         // told only "on cpu" - which reads as a decision we made rather than a
         // wheel we failed to ask for.
-        if (await HasNvidiaAsync(cancellationToken))
+        if (!_useMlx && await HasNvidiaAsync(cancellationToken))
         {
             progress?.Report(("downloading-cuda", null, string.Empty));
             var cuda = await RunAsync(
@@ -314,8 +319,26 @@ internal sealed class PythonEnvironment
         {
             var (code, output, _) = await RunAsync(
                 executable, [.. prefix, "--version"], cancellationToken);
-            if (code == 0 && IsUsable(output))
-                return (executable, prefix);
+            if (code != 0 || !IsUsable(output))
+                continue;
+            if (_useMlx)
+            {
+                // An Intel interpreter under Rosetta cannot load MLX's ARM64
+                // wheels. Keep looking, then fetch a native private Python.
+                var (archCode, probe, _) = await RunAsync(executable,
+                    [.. prefix, "-c", "import os, platform, sys; print(platform.machine()); print(os.path.realpath(sys.executable))"], cancellationToken);
+                using var lines = new StringReader(probe);
+                if (archCode != 0 || !IsNativeMlxPython(lines.ReadLine() ?? string.Empty))
+                    continue;
+                // uv-managed Python may be exposed through a PATH symlink.
+                // CPython's venv then records the symlink directory as its
+                // home and cannot find the standard library. Use its real path.
+                var nativePython = lines.ReadLine();
+                if (!string.IsNullOrWhiteSpace(nativePython) && File.Exists(nativePython))
+                    return (nativePython, []);
+                continue;
+            }
+            return (executable, prefix);
         }
         // Nothing in the range. This used to fall back to whatever answered, and
         // the install then failed minutes later with a wall of pip output about
@@ -347,6 +370,9 @@ internal sealed class PythonEnvironment
 
         return minor >= OldestSupportedMinor && minor <= NewestSupportedMinor;
     }
+
+    internal static bool IsNativeMlxPython(string architecture)
+        => architecture.Trim() is "arm64" or "aarch64";
 
     /// <summary>
     /// The pip output worth putting in front of somebody, and how far through it

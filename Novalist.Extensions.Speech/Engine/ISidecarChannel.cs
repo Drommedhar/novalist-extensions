@@ -97,6 +97,9 @@ internal sealed class ProcessSidecarChannel : ISidecarChannel
         // that code page unless told otherwise, and the payload here is
         // somebody's novel.
         info.Environment["PYTHONUTF8"] = "1";
+        // Match the runtime whose requirements the host installed, even when
+        // a Rosetta host finds a native Python interpreter on PATH.
+        info.Environment["NOVALIST_TTS_BACKEND"] = SpeechRuntime.UseMlx ? "mlx" : "torch";
         info.Environment["PYTHONIOENCODING"] = "utf-8";
         // Keep large model weights with the extension. Apart from making the
         // disk estimate truthful, deleting the extension's data then removes

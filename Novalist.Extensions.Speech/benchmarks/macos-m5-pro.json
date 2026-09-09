@@ -1,0 +1,270 @@
+{
+  "clone-fp32": {
+    "mode": "clone",
+    "dtype": "torch.float32",
+    "device": "mps",
+    "torch": "2.13.0",
+    "macos": "26.5.2",
+    "architecture": "arm64",
+    "revision": "fd4b254389122332181a7c3db7f27e918eec64e3",
+    "language": "de",
+    "runs": [
+      {
+        "index": 0,
+        "cold": true,
+        "seconds": 22.243055665981956,
+        "audio_seconds": 7.52,
+        "real_time_factor": 2.957853147072069,
+        "peak": 0.6289387345314026,
+        "rms": 0.07508179545402527,
+        "mps_allocated_bytes": 8605597696,
+        "mps_driver_bytes": 17832591360
+      },
+      {
+        "index": 1,
+        "cold": false,
+        "seconds": 21.28692379198037,
+        "audio_seconds": 7.52,
+        "real_time_factor": 2.83070795106122,
+        "peak": 0.6289387345314026,
+        "rms": 0.07508179545402527,
+        "mps_allocated_bytes": 8605456384,
+        "mps_driver_bytes": 17832591360
+      },
+      {
+        "index": 2,
+        "cold": false,
+        "seconds": 21.475092708016746,
+        "audio_seconds": 7.52,
+        "real_time_factor": 2.8557304133000994,
+        "peak": 0.6289387345314026,
+        "rms": 0.07508179545402527,
+        "mps_allocated_bytes": 8605456384,
+        "mps_driver_bytes": 17832591360
+      }
+    ],
+    "load_seconds": 3.2980414159828797,
+    "parameter_bytes": 7714709760,
+    "prompt_seconds": 0.7730341660790145
+  },
+  "clone-bf16": {
+    "mode": "clone",
+    "dtype": "torch.bfloat16",
+    "device": "mps",
+    "torch": "2.13.0",
+    "macos": "26.5.2",
+    "architecture": "arm64",
+    "revision": "fd4b254389122332181a7c3db7f27e918eec64e3",
+    "language": "de",
+    "runs": [
+      {
+        "index": 0,
+        "cold": true,
+        "seconds": 20.161027000052854,
+        "audio_seconds": 7.44,
+        "real_time_factor": 2.7098154569963513,
+        "peak": 0.58984375,
+        "rms": 0.07371513545513153,
+        "mps_allocated_bytes": 4232301312,
+        "mps_driver_bytes": 8584134656
+      },
+      {
+        "index": 1,
+        "cold": false,
+        "seconds": 15.822258250089362,
+        "audio_seconds": 7.44,
+        "real_time_factor": 2.1266476142593227,
+        "peak": 0.58984375,
+        "rms": 0.07371513545513153,
+        "mps_allocated_bytes": 4232160000,
+        "mps_driver_bytes": 8584134656
+      },
+      {
+        "index": 2,
+        "cold": false,
+        "seconds": 15.768062292016111,
+        "audio_seconds": 7.44,
+        "real_time_factor": 2.119363211292488,
+        "peak": 0.58984375,
+        "rms": 0.07371513545513153,
+        "mps_allocated_bytes": 4232160000,
+        "mps_driver_bytes": 8584134656
+      }
+    ],
+    "load_seconds": 1.2448910409584641,
+    "parameter_bytes": 3857354880,
+    "prompt_seconds": 4.997573583968915
+  },
+  "clone-fp16": {
+    "mode": "clone",
+    "dtype": "torch.float16",
+    "device": "mps",
+    "torch": "2.13.0",
+    "macos": "26.5.2",
+    "architecture": "arm64",
+    "revision": "fd4b254389122332181a7c3db7f27e918eec64e3",
+    "language": "de",
+    "runs": [
+      {
+        "index": 0,
+        "cold": true,
+        "seconds": 19.440063624992035,
+        "audio_seconds": 7.12,
+        "real_time_factor": 2.7303460147460723,
+        "peak": 0.5654296875,
+        "rms": 0.06911253929138184,
+        "mps_allocated_bytes": 4232301312,
+        "mps_driver_bytes": 8441528320
+      },
+      {
+        "index": 1,
+        "cold": false,
+        "seconds": 15.077941041905433,
+        "audio_seconds": 7.12,
+        "real_time_factor": 2.1176883485822238,
+        "peak": 0.5654296875,
+        "rms": 0.06911253929138184,
+        "mps_allocated_bytes": 4232160000,
+        "mps_driver_bytes": 8441528320
+      },
+      {
+        "index": 2,
+        "cold": false,
+        "seconds": 15.008997167111374,
+        "audio_seconds": 7.12,
+        "real_time_factor": 2.108005220099912,
+        "peak": 0.5654296875,
+        "rms": 0.06911253929138184,
+        "mps_allocated_bytes": 4232160000,
+        "mps_driver_bytes": 8441528320
+      }
+    ],
+    "load_seconds": 1.1736180830048397,
+    "parameter_bytes": 3857354880,
+    "prompt_seconds": 4.918939957977273
+  },
+  "clone-bf16-metal": {
+    "mode": "clone",
+    "dtype": "torch.bfloat16",
+    "device": "mps",
+    "torch": "2.13.0",
+    "macos": "26.5.2",
+    "architecture": "arm64",
+    "revision": "fd4b254389122332181a7c3db7f27e918eec64e3",
+    "language": "de",
+    "runs": [
+      {
+        "index": 0,
+        "cold": true,
+        "seconds": 15.9678871659562,
+        "audio_seconds": 7.44,
+        "real_time_factor": 2.1462213932736827,
+        "peak": 0.58984375,
+        "rms": 0.07371513545513153,
+        "mps_allocated_bytes": 4232301312,
+        "mps_driver_bytes": 8584151040
+      },
+      {
+        "index": 1,
+        "cold": false,
+        "seconds": 15.723852958064526,
+        "audio_seconds": 7.44,
+        "real_time_factor": 2.113421096514049,
+        "peak": 0.58984375,
+        "rms": 0.07371513545513153,
+        "mps_allocated_bytes": 4232160000,
+        "mps_driver_bytes": 8584151040
+      },
+      {
+        "index": 2,
+        "cold": false,
+        "seconds": 16.029096333077177,
+        "audio_seconds": 7.44,
+        "real_time_factor": 2.154448431865212,
+        "peak": 0.58984375,
+        "rms": 0.07371513545513153,
+        "mps_allocated_bytes": 4232160000,
+        "mps_driver_bytes": 8584151040
+      }
+    ],
+    "prefer_metal": "1",
+    "load_seconds": 1.2347147919936106,
+    "parameter_bytes": 3857354880,
+    "prompt_seconds": 0.5125115000410005
+  },
+  "design-fp32": {
+    "mode": "design",
+    "dtype": "torch.float32",
+    "device": "mps",
+    "torch": "2.13.0",
+    "macos": "26.5.2",
+    "architecture": "arm64",
+    "revision": "5ecdb67327fd37bb2e042aab12ff7391903235d3",
+    "language": "de",
+    "runs": [
+      {
+        "index": 0,
+        "cold": true,
+        "seconds": 34.97321158298291,
+        "audio_seconds": 10.96,
+        "real_time_factor": 3.1909864583013605,
+        "peak": 0.6455185413360596,
+        "rms": 0.08479795604944229,
+        "mps_allocated_bytes": 8348961024,
+        "mps_driver_bytes": 14206320640
+      }
+    ],
+    "load_seconds": 3.151679874979891,
+    "parameter_bytes": 7666705408
+  },
+  "design-bf16": {
+    "mode": "design",
+    "dtype": "torch.bfloat16",
+    "device": "mps",
+    "torch": "2.13.0",
+    "macos": "26.5.2",
+    "architecture": "arm64",
+    "revision": "5ecdb67327fd37bb2e042aab12ff7391903235d3",
+    "language": "de",
+    "runs": [
+      {
+        "index": 0,
+        "cold": true,
+        "seconds": 22.54154833301436,
+        "audio_seconds": 10.56,
+        "real_time_factor": 2.134616319414239,
+        "peak": 0.3828125,
+        "rms": 0.04640038311481476,
+        "mps_allocated_bytes": 4174495488,
+        "mps_driver_bytes": 7719829504
+      },
+      {
+        "index": 1,
+        "cold": false,
+        "seconds": 22.11582295806147,
+        "audio_seconds": 10.56,
+        "real_time_factor": 2.094301416483094,
+        "peak": 0.3828125,
+        "rms": 0.04640038311481476,
+        "mps_allocated_bytes": 4174495744,
+        "mps_driver_bytes": 7719829504
+      },
+      {
+        "index": 2,
+        "cold": false,
+        "seconds": 22.301730667008087,
+        "audio_seconds": 10.56,
+        "real_time_factor": 2.1119063131636446,
+        "peak": 0.3828125,
+        "rms": 0.04640038311481476,
+        "mps_allocated_bytes": 4174495488,
+        "mps_driver_bytes": 7719829504
+      }
+    ],
+    "inference_mode": false,
+    "profiled": false,
+    "prefer_metal": "0",
+    "load_seconds": 1.32549958396703,
+    "parameter_bytes": 3833352704
+  }
+}

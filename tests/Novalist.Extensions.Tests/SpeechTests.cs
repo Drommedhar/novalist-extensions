@@ -506,9 +506,46 @@ public sealed class SpeechTests : IDisposable
         Assert.True(File.Exists(Path.Combine(directory, "requirements.txt")));
         Assert.Contains(
             "qwen-tts==0.1.1", File.ReadAllText(Path.Combine(directory, "requirements.txt")));
+        Assert.Contains("class MlxQwenModel", File.ReadAllText(Path.Combine(directory, "mlx_backend.py")));
+        Assert.Contains("mlx-audio==0.5.3", File.ReadAllText(Path.Combine(directory, "requirements-macos.txt")));
         Assert.Contains(
             "PROTOCOL_VERSION", File.ReadAllText(Path.Combine(directory, "sidecar.py")));
     }
+
+    [Theory]
+    [InlineData(true, Architecture.Arm64, true)]
+    [InlineData(true, Architecture.X64, false)]
+    [InlineData(false, Architecture.Arm64, false)]
+    [InlineData(false, Architecture.X64, false)]
+    public void MlxIsOnlySelectedForAppleSiliconMacs(bool mac, Architecture architecture, bool expected)
+        => Assert.Equal(expected, SpeechRuntime.UsesMlx(mac, architecture));
+
+    [Fact]
+    public void MlxHasAnIndependentEnvironmentAndRecipe()
+    {
+        var root = Path.Combine(_work, "runtime-migration");
+        var torch = new PythonEnvironment(root);
+        var mlx = new PythonEnvironment(root, useMlx: true);
+        Assert.NotEqual(torch.VenvPath, mlx.VenvPath);
+        Assert.Equal(torch.WorkPath, mlx.WorkPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(mlx.VenvPython)!);
+        File.WriteAllText(mlx.VenvPython, "interpreter");
+        var requirements = Path.Combine(root, "mlx.txt");
+        File.WriteAllText(requirements, "mlx-audio==0.5.3");
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(requirements)));
+        File.WriteAllText(Path.Combine(root, "installed.txt"), hash);
+        Assert.False(mlx.IsBuiltFor(requirements));
+        File.WriteAllText(Path.Combine(root, "installed-mlx.txt"), hash);
+        Assert.True(mlx.IsBuiltFor(requirements));
+    }
+
+    [Theory]
+    [InlineData("arm64\n", true)]
+    [InlineData("aarch64", true)]
+    [InlineData("x86_64", false)]
+    [InlineData("", false)]
+    public void MlxRejectsRosettaPython(string architecture, bool expected)
+        => Assert.Equal(expected, PythonEnvironment.IsNativeMlxPython(architecture));
 
     [Fact]
     public void TheSidecar_LeavesAnEditedCopyAlone()
@@ -574,7 +611,7 @@ public sealed class SpeechTests : IDisposable
         Assert.True(extension.Features.HasFlag(VoiceEngineFeatures.DesignFromDescription));
         Assert.True(extension.Features.HasFlag(VoiceEngineFeatures.EmotionInferred));
         Assert.True(extension.Features.HasFlag(VoiceEngineFeatures.Streaming));
-        Assert.True(extension.Features.HasFlag(VoiceEngineFeatures.RunsOnCpu));
+        Assert.Equal(!SpeechRuntime.UseMlx, extension.Features.HasFlag(VoiceEngineFeatures.RunsOnCpu));
         // Base clones the reference the design checkpoint created internally,
         // but the extension deliberately offers no user-recording clone path.
         Assert.False(extension.Features.HasFlag(VoiceEngineFeatures.CloneFromSample));

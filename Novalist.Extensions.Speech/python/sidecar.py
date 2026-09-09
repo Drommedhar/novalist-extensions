@@ -25,6 +25,7 @@ import hashlib
 import io
 import json
 import os
+import platform
 import secrets
 import sys
 import time
@@ -35,10 +36,20 @@ from typing import Any
 
 PROTOCOL_VERSION = 3
 
+
+def use_mlx() -> bool:
+    """MLX is the native Apple Silicon backend; other platforms keep torch."""
+    if os.environ.get("NOVALIST_TTS_BACKEND") == "torch":
+        return False
+    return sys.platform == "darwin" and platform.machine().lower() in {"arm64", "aarch64"}
+
+
 DESIGN_MODEL = os.environ.get(
-    "NOVALIST_TTS_DESIGN_MODEL", "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign")
+    "NOVALIST_TTS_DESIGN_MODEL", "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-bf16"
+    if use_mlx() else "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign")
 CLONE_MODEL = os.environ.get(
-    "NOVALIST_TTS_CLONE_MODEL", "Qwen/Qwen3-TTS-12Hz-1.7B-Base")
+    "NOVALIST_TTS_CLONE_MODEL", "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16"
+    if use_mlx() else "Qwen/Qwen3-TTS-12Hz-1.7B-Base")
 TEMPERATURE = float(os.environ.get("NOVALIST_TTS_TEMPERATURE", "0.9"))
 DESIGN_ATTEMPTS = 3
 
@@ -55,13 +66,14 @@ def _speak_utf8() -> None:
 
 
 _speak_utf8()
+PROTOCOL_STDOUT = sys.stdout
 
 
 def emit(**payload: Any) -> None:
     """Write and flush one protocol reply."""
     payload.setdefault("id", CURRENT_ID)
-    sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
+    PROTOCOL_STDOUT.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    PROTOCOL_STDOUT.flush()
 
 
 def note(message: str) -> None:
@@ -182,16 +194,40 @@ class Engine:
     design_model: Any = None
     sample_rate: int = 24000
     clone_prompts: dict[str, tuple[str, Any]] = field(default_factory=dict)
+    snapshots: dict[str, str] = field(default_factory=dict)
 
 
 def new_engine() -> Engine:
     """Create the lightweight holder; checkpoints are loaded on demand."""
     emit(type="progress", step="importing")
+    if use_mlx():
+        import mlx.core as mx
+        return Engine(device="mlx", dtype=mx.bfloat16)
+    device = pick_device()
+    dtype = model_dtype(device)
+    return Engine(device=device, dtype=dtype)
+
+
+def model_dtype(device: str) -> Any:
+    """Keep Qwen's BF16 weights on supported GPUs instead of expanding to FP32.
+
+    MPS BF16 depends on both macOS and the installed torch build. Probe the
+    actual backend before loading gigabytes of weights; older Macs retain the
+    working FP32 path. FP16 is not interchangeable with Qwen's BF16 range.
+    """
     import torch
 
-    device = pick_device()
-    dtype = torch.bfloat16 if device == "cuda" else torch.float32
-    return Engine(device=device, dtype=dtype)
+    if device == "cuda":
+        return torch.bfloat16
+    if device == "mps":
+        try:
+            probe = torch.ones((2, 2), device="mps", dtype=torch.bfloat16)
+            probe @ probe
+            torch.mps.synchronize()
+            return torch.bfloat16
+        except (RuntimeError, TypeError):
+            note("MPS bfloat16 unavailable; using float32.")
+    return torch.float32
 
 
 def _model_kwargs(engine: Engine) -> dict[str, Any]:
@@ -253,9 +289,15 @@ class HubDownloadProgress:
         )
 
 
-def download_checkpoint(model_id: str, detail: str) -> str:
+def download_checkpoint(model_id: str, detail: str, *, mlx: bool = False) -> str:
     """Download/resume one Hub repository while forwarding its byte progress."""
     emit(type="progress", step="downloading-model", detail=detail)
+    if mlx:
+        from mlx_backend import download_checkpoint as download_mlx
+        with contextlib.redirect_stdout(sys.stderr):
+            # Model chatter belongs on stderr, but our progress replies must
+            # still reach the protocol's original stdout.
+            return download_mlx(model_id, detail, HubDownloadProgress)
     from huggingface_hub import snapshot_download
     import huggingface_hub.file_download as file_download
 
@@ -299,9 +341,15 @@ def download_checkpoint(model_id: str, detail: str) -> str:
 
 
 def _load_checkpoint(engine: Engine, model_id: str, detail: str) -> Any:
-    snapshot = download_checkpoint(model_id, detail)
+    snapshot = engine.snapshots.get(model_id)
+    if snapshot is None:
+        snapshot = download_checkpoint(model_id, detail, mlx=engine.device == "mlx")
+        engine.snapshots[model_id] = snapshot
     emit(type="progress", step="loading-model", detail=detail)
     with contextlib.redirect_stdout(sys.stderr):
+        if engine.device == "mlx":
+            from mlx_backend import MlxQwenModel
+            return MlxQwenModel.from_pretrained(snapshot)
         from qwen_tts import Qwen3TTSModel
         return Qwen3TTSModel.from_pretrained(snapshot, **_model_kwargs(engine))
 
@@ -313,10 +361,17 @@ def _release(engine: Engine, which: str) -> None:
     else:
         engine.design_model = None
     gc.collect()
+    if engine.device == "mlx":
+        import mlx.core as mx
+        mx.synchronize()
+        mx.clear_cache()
+        return
     try:
         import torch
         if engine.device == "cuda":
             torch.cuda.empty_cache()
+        elif engine.device == "mps":
+            torch.mps.empty_cache()
     except ImportError:
         pass
 
@@ -344,6 +399,14 @@ def seed_torch(seed: int) -> None:
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
+
+def seed_engine(engine: Engine, seed: int) -> None:
+    if engine.device == "mlx":
+        import mlx.core as mx
+        mx.random.seed(seed)
+    else:
+        seed_torch(seed)
 
 
 def write_wav(path: str, audio: Any, sample_rate: int) -> float:
@@ -398,7 +461,7 @@ def do_design(engine: Engine, work: str, request: dict[str, Any]) -> None:
     for attempt in range(DESIGN_ATTEMPTS):
         used = (base + attempt) % (2 ** 31)
         try:
-            seed_torch(used)
+            seed_engine(engine, used)
             with contextlib.redirect_stdout(sys.stderr):
                 wavs, sample_rate = model.generate_voice_design(
                     text=spoken,
@@ -563,7 +626,7 @@ def main() -> int:
                     type="ready",
                     version=PROTOCOL_VERSION,
                     ready=True,
-                    detail=f"{CLONE_MODEL} + {DESIGN_MODEL} on {engine.device}",
+                    detail=f"{CLONE_MODEL} + {DESIGN_MODEL} on {engine.device} ({engine.dtype})",
                 )
             elif op == "design":
                 do_design(engine, args.work, request)

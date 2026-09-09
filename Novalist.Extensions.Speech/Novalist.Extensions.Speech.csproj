@@ -20,6 +20,8 @@
   -->
   <ItemGroup>
     <EmbeddedResource Include="python\sidecar.py" LogicalName="sidecar.py" />
+    <EmbeddedResource Include="python\mlx_backend.py" LogicalName="mlx_backend.py" />
     <EmbeddedResource Include="python\requirements.txt" LogicalName="requirements.txt" />
+    <EmbeddedResource Include="python\requirements-macos.txt" LogicalName="requirements-macos.txt" />
   </ItemGroup>
 </Project>

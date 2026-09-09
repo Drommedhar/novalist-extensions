@@ -6,7 +6,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 HERE = Path(__file__).resolve().parent
@@ -15,6 +15,80 @@ assert SPEC is not None and SPEC.loader is not None
 sidecar = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = sidecar
 SPEC.loader.exec_module(sidecar)
+
+
+class AppleGpuPrecision(unittest.TestCase):
+    def setUp(self):
+        runtime = patch.object(sidecar, "use_mlx", return_value=False)
+        runtime.start()
+        self.addCleanup(runtime.stop)
+
+    def torch(self):
+        torch = MagicMock()
+        torch.cuda.is_available.return_value = False
+        torch.backends.mps.is_available.return_value = True
+        torch.float32 = "float32"
+        torch.bfloat16 = "bfloat16"
+        return torch
+
+    def test_supported_mac_loads_bfloat16_on_mps_with_sdpa(self):
+        torch = self.torch()
+        with patch.dict(sys.modules, torch=torch), patch.object(sidecar, "emit"):
+            engine = sidecar.new_engine()
+        self.assertEqual({"device_map": "mps", "dtype": "bfloat16",
+                          "attn_implementation": "sdpa"}, sidecar._model_kwargs(engine))
+        torch.ones.assert_called_once_with((2, 2), device="mps", dtype="bfloat16")
+        torch.ones.return_value.__matmul__.assert_called_once()
+        torch.mps.synchronize.assert_called_once()
+
+    def test_older_mac_keeps_float32_if_allocation_or_execution_is_unsupported(self):
+        for operation, error in (("allocation", TypeError), ("execution", RuntimeError)):
+            with self.subTest(operation=operation):
+                torch = self.torch()
+                if operation == "allocation":
+                    torch.ones.side_effect = error("unsupported dtype")
+                else:
+                    torch.mps.synchronize.side_effect = error("unsupported operation")
+                with patch.dict(sys.modules, torch=torch), patch.object(sidecar, "emit"), \
+                        patch.object(sidecar, "note"):
+                    engine = sidecar.new_engine()
+                self.assertEqual("mps", engine.device)
+                self.assertEqual("float32", engine.dtype)
+
+    def test_cpu_and_cuda_do_not_probe_or_use_mps(self):
+        for cuda, expected_dtype in ((False, "float32"), (True, "bfloat16")):
+            with self.subTest(cuda=cuda):
+                torch = self.torch()
+                torch.cuda.is_available.return_value = cuda
+                torch.backends.mps.is_available.return_value = False
+                with patch.dict(sys.modules, torch=torch), patch.object(sidecar, "emit"):
+                    engine = sidecar.new_engine()
+                self.assertEqual("cuda" if cuda else "cpu", engine.device)
+                self.assertEqual(expected_dtype, engine.dtype)
+                torch.ones.assert_not_called()
+
+    def test_switching_models_releases_metal_cache_and_stale_clone_prompts(self):
+        torch = self.torch()
+        engine = sidecar.Engine("mps", "bfloat16", clone_model=object())
+        engine.clone_prompts["voice"] = ("fingerprint", object())
+
+        def load_design(*args):
+            self.assertIsNone(engine.clone_model)
+            self.assertEqual({}, engine.clone_prompts)
+            torch.mps.empty_cache.assert_called_once()
+            return object()
+
+        with patch.dict(sys.modules, torch=torch), patch.object(sidecar, "gc"), \
+                patch.object(sidecar, "_load_checkpoint", side_effect=load_design):
+            design = sidecar.ensure_design(engine)
+            self.assertIs(design, sidecar.ensure_design(engine))
+        torch.cuda.empty_cache.assert_not_called()
+
+        with patch.dict(sys.modules, torch=torch), patch.object(sidecar, "gc"), \
+                patch.object(sidecar, "_load_checkpoint", return_value=object()):
+            sidecar.ensure_clone(engine)
+        self.assertIsNone(engine.design_model)
+        self.assertEqual(2, torch.mps.empty_cache.call_count)
 
 
 class QwenLanguages(unittest.TestCase):

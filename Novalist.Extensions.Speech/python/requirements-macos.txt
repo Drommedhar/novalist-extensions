@@ -1,0 +1,8 @@
+# Apple Silicon: isolated MLX runtime, no qwen-tts/PyTorch dependency.
+# The adapter uses the ICL API of this tested mlx-audio release.
+mlx-audio==0.5.3
+mlx==0.32.2
+transformers==5.16.1
+huggingface-hub==1.30.0
+# Same pitch-preserving reading-rate adjustment as the PyTorch backend.
+librosa==0.11.0
