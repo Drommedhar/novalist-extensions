@@ -73,9 +73,13 @@ public sealed class SpeechGpuTests : IDisposable
     {
         var calls = new List<string[]>();
         PythonEnvironment? environment = null;
-        environment = new PythonEnvironment(_root, gpu: gpu, run: (_, args, _, _) =>
+        environment = new PythonEnvironment(_root, gpu: gpu, run: (executable, args, _, _) =>
         {
             calls.Add(args);
+            // Linux also probes the NVIDIA driver. A successful generic GPU
+            // reply here would replace the requested ROCm runtime with CUDA.
+            if (executable == "nvidia-smi")
+                return Task.FromResult((1, "", "NVIDIA driver not present in this fixture"));
             if (args.Contains("--version"))
                 return Task.FromResult((0, "Python 3.12.10", ""));
             if (args.Any(arg => arg.Contains("struct.calcsize")))
@@ -88,7 +92,9 @@ public sealed class SpeechGpuTests : IDisposable
             }
             if (args.Contains("pip"))
                 return Task.FromResult((installExit, "pip details", installExit == 0 ? "" : "download failed"));
-            return Task.FromResult((probeExit, "GPU probe", probeExit == 0 ? "" : "driver unavailable"));
+            if (args.SequenceEqual(new[] { "-c", PythonEnvironment.GpuProbe(gpu) }))
+                return Task.FromResult((probeExit, "GPU probe", probeExit == 0 ? "" : "driver unavailable"));
+            throw new InvalidOperationException($"Unexpected test command: {executable} {string.Join(' ', args)}");
         });
         var requirements = Requirements();
         var failure = await environment.BuildAsync(requirements, null);
