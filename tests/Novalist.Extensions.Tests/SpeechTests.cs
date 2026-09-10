@@ -466,7 +466,7 @@ public sealed class SpeechTests : IDisposable
         File.WriteAllText(Path.Combine(root, "installed.txt"), "whatever was there before");
         File.WriteAllText(requirements, "qwen-tts==0.1.0\n");
 
-        var python = new PythonEnvironment(root);
+        var python = new PythonEnvironment(root, gpu: "cpu");
         // Pretend the interpreter is there; what is being tested is the verdict,
         // not the venv.
         var interpreter = python.VenvPython;
@@ -484,14 +484,13 @@ public sealed class SpeechTests : IDisposable
         Directory.CreateDirectory(root);
         File.WriteAllText(requirements, "qwen-tts==0.1.1\nnumpy\n");
 
-        var python = new PythonEnvironment(root);
+        var python = new PythonEnvironment(root, gpu: "cpu");
         var interpreter = python.VenvPython;
         Directory.CreateDirectory(Path.GetDirectoryName(interpreter)!);
         File.WriteAllText(interpreter, string.Empty);
         File.WriteAllText(
             Path.Combine(root, "installed.txt"),
-            Convert.ToHexString(
-                System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(requirements))));
+            python.Recipe(requirements));
 
         Assert.True(python.IsBuiltFor(requirements));
 
@@ -506,7 +505,7 @@ public sealed class SpeechTests : IDisposable
     {
         var root = Path.Combine(_work, "env3");
         Directory.CreateDirectory(root);
-        var python = new PythonEnvironment(root);
+        var python = new PythonEnvironment(root, gpu: "cpu");
         var interpreter = python.VenvPython;
         Directory.CreateDirectory(Path.GetDirectoryName(interpreter)!);
         File.WriteAllText(interpreter, string.Empty);
@@ -548,7 +547,7 @@ public sealed class SpeechTests : IDisposable
     public void MlxHasAnIndependentEnvironmentAndRecipe()
     {
         var root = Path.Combine(_work, "runtime-migration");
-        var torch = new PythonEnvironment(root);
+        var torch = new PythonEnvironment(root, gpu: "cpu");
         var mlx = new PythonEnvironment(root, useMlx: true);
         Assert.NotEqual(torch.VenvPath, mlx.VenvPath);
         Assert.Equal(torch.WorkPath, mlx.WorkPath);

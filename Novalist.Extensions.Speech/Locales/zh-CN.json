@@ -1,4 +1,5 @@
 {
+  "speech.gpuUnavailable": "GPU 运行环境已安装，但无法在你的显卡上运行。请检查 Speech 扩展所需的显卡驱动，然后再次点击准备。技术详情保存在此扩展应用数据文件夹中的 install-failed.txt 内。",
   "speech.preparing": "正在准备语音引擎",
   "speech.noPython": "找不到也无法下载用于语音模型的 Python。请检查网络连接，然后再次点击“准备”。",
   "speech.installFailed": "无法搭建语音环境。pip 的完整报错保存在本扩展目录下的 install-failed.txt 中（位于 Novalist 的应用数据文件夹）。",

@@ -25,6 +25,7 @@ class AppleGpuPrecision(unittest.TestCase):
 
     def torch(self):
         torch = MagicMock()
+        torch.version.hip = None
         torch.cuda.is_available.return_value = False
         torch.backends.mps.is_available.return_value = True
         torch.float32 = "float32"
@@ -89,6 +90,59 @@ class AppleGpuPrecision(unittest.TestCase):
             sidecar.ensure_clone(engine)
         self.assertIsNone(engine.design_model)
         self.assertEqual(2, torch.mps.empty_cache.call_count)
+
+
+class WindowsGpuStatus(unittest.TestCase):
+    def test_windows_rocm_avoids_searches_before_checking_the_device(self):
+        torch = MagicMock()
+        torch.version.hip = "7.2"
+        def available():
+            self.assertEqual("FAST", sidecar.os.environ["MIOPEN_FIND_MODE"])
+            return True
+        torch.cuda.is_available.side_effect = available
+        with patch.dict(sys.modules, torch=torch), patch.object(sidecar.sys, "platform", "win32"), \
+                patch.dict(sidecar.os.environ, {}, clear=True):
+            self.assertEqual("cuda", sidecar.pick_device())
+
+    def test_explicit_miopen_mode_is_preserved(self):
+        torch = MagicMock()
+        torch.version.hip = "7.2"
+        with patch.object(sidecar.sys, "platform", "win32"), \
+                patch.dict(sidecar.os.environ, {"MIOPEN_FIND_MODE": "NORMAL"}, clear=True):
+            sidecar.configure_torch_runtime(torch)
+            self.assertEqual("NORMAL", sidecar.os.environ["MIOPEN_FIND_MODE"])
+
+    def test_other_platforms_and_nvidia_keep_their_runtime_defaults(self):
+        for platform, hip in (("linux", "7.2"), ("darwin", None), ("win32", None)):
+            with self.subTest(platform=platform, hip=hip):
+                torch = MagicMock()
+                torch.version.hip = hip
+                with patch.object(sidecar.sys, "platform", platform), \
+                        patch.dict(sidecar.os.environ, {}, clear=True):
+                    sidecar.configure_torch_runtime(torch)
+                    self.assertNotIn("MIOPEN_FIND_MODE", sidecar.os.environ)
+
+    def test_rocm_uses_torch_cuda_but_reports_the_amd_card(self):
+        torch = MagicMock()
+        torch.cuda.is_available.return_value = True
+        torch.version.hip = "7.2"
+        torch.cuda.get_device_name.return_value = "AMD Radeon RX 9070 XT"
+        with patch.dict(sys.modules, torch=torch), patch.dict(sidecar.os.environ, {}, clear=True):
+            self.assertEqual("cuda", sidecar.pick_device())
+            engine = sidecar.Engine("cuda", "bfloat16")
+            self.assertEqual("cuda:0", sidecar._model_kwargs(engine)["device_map"])
+            self.assertEqual("ROCm: AMD Radeon RX 9070 XT (bfloat16)", sidecar.device_description(engine))
+
+    def test_nvidia_status_names_cuda_and_the_card(self):
+        torch = MagicMock()
+        torch.version.hip = None
+        torch.cuda.get_device_name.return_value = "NVIDIA GeForce RTX 4060"
+        with patch.dict(sys.modules, torch=torch):
+            self.assertEqual("CUDA: NVIDIA GeForce RTX 4060 (bfloat16)",
+                             sidecar.device_description(sidecar.Engine("cuda", "bfloat16")))
+
+    def test_cpu_status_needs_no_gpu_runtime(self):
+        self.assertEqual("cpu (float32)", sidecar.device_description(sidecar.Engine("cpu", "float32")))
 
 
 class QwenLanguages(unittest.TestCase):

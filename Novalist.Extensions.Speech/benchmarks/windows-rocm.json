@@ -1,0 +1,90 @@
+{
+  "measured": "2026-09-10",
+  "cpu": "AMD Ryzen 9 9950X3D",
+  "gpu": "AMD Radeon RX 9070 XT",
+  "driver": "Adrenalin 26.9.1 (32.0.31041.3013)",
+  "design": {
+    "mode": "design",
+    "dtype": "torch.bfloat16",
+    "device": "cuda",
+    "torch": "2.9.1+rocm7.2.1",
+    "macos": "",
+    "architecture": "AMD64",
+    "revision": "5ecdb67327fd37bb2e042aab12ff7391903235d3",
+    "language": "en",
+    "runs": [
+      {
+        "index": 0,
+        "cold": true,
+        "seconds": 60.82883670000592,
+        "audio_seconds": 8.88,
+        "real_time_factor": 6.850094222973639,
+        "peak": 0.71484375,
+        "rms": 0.08440293371677399
+      }
+    ],
+    "inference_mode": false,
+    "profiled": false,
+    "prefer_metal": "0",
+    "load_seconds": 5.111338400005479,
+    "parameter_bytes": 3833352704,
+    "text": "This is my natural speaking voice. I speak clearly at a comfortable pace. Now I will continue the story calmly and without affectation.",
+    "reference_sha256": null
+  },
+  "clone": {
+    "mode": "clone",
+    "dtype": "torch.bfloat16",
+    "device": "cuda",
+    "device_description": "ROCm: AMD Radeon RX 9070 XT (torch.bfloat16)",
+    "operating_system": "Windows-11-10.0.26200-SP0",
+    "hip": "7.2.53211-158bd99533",
+    "torch": "2.9.1+rocm7.2.1",
+    "macos": "",
+    "architecture": "AMD64",
+    "revision": "fd4b254389122332181a7c3db7f27e918eec64e3",
+    "language": "en",
+    "runs": [
+      {
+        "index": 0,
+        "cold": true,
+        "seconds": 81.23372790000576,
+        "audio_seconds": 6.56,
+        "real_time_factor": 12.383190228659416,
+        "peak": 0.65234375,
+        "rms": 0.07082909345626831,
+        "gpu_peak_allocated_bytes": 5148023296,
+        "gpu_peak_reserved_bytes": 5280628736
+      },
+      {
+        "index": 1,
+        "cold": false,
+        "seconds": 10.474620399996638,
+        "audio_seconds": 6.56,
+        "real_time_factor": 1.596740914633634,
+        "peak": 0.65234375,
+        "rms": 0.07082909345626831,
+        "gpu_peak_allocated_bytes": 5146910720,
+        "gpu_peak_reserved_bytes": 5662310400
+      },
+      {
+        "index": 2,
+        "cold": false,
+        "seconds": 11.159780300004059,
+        "audio_seconds": 6.56,
+        "real_time_factor": 1.7011860213420822,
+        "peak": 0.65234375,
+        "rms": 0.07082909345626831,
+        "gpu_peak_allocated_bytes": 5146910720,
+        "gpu_peak_reserved_bytes": 5662310400
+      }
+    ],
+    "inference_mode": false,
+    "profiled": false,
+    "prefer_metal": "0",
+    "load_seconds": 5.479084599995986,
+    "parameter_bytes": 3857354880,
+    "prompt_seconds": 8.701866100003826,
+    "text": "The next morning she opened the window. The street was quiet, and the garden smelled of fresh rain.",
+    "reference_sha256": "f4330e4a30a1255617fe2875318b646bb73c1016aaaea4e94fb9fa1044c0202a"
+  }
+}

@@ -173,17 +173,40 @@ def reading_rate(value: Any) -> float:
 
 
 def pick_device() -> str:
-    """Use a GPU when available and retain a real, if slow, CPU path."""
+    """Use a GPU when available. ROCm exposes AMD GPUs through torch.cuda too."""
     try:
         import torch
     except ImportError:
         return "cpu"
+    configure_torch_runtime(torch)
     if torch.cuda.is_available():
         return "cuda"
     mps = getattr(torch.backends, "mps", None)
     if mps is not None and mps.is_available():
         return "mps"
     return "cpu"
+
+
+def configure_torch_runtime(torch: Any) -> None:
+    """Avoid per-passage convolution searches in native Windows MIOpen.
+
+    Audio lengths change continually. The default search path can spend tens
+    of seconds on each unseen shape while reporting zero workspace. FAST
+    chooses a cached/heuristic solver instead. Set this before the first GPU
+    operation; keep any explicit user override and other platforms unchanged.
+    https://rocm.docs.amd.com/projects/MIOpen/en/latest/how-to/find-and-immediate.html
+    """
+    if sys.platform == "win32" and torch.version.hip:
+        os.environ.setdefault("MIOPEN_FIND_MODE", "FAST")
+
+
+def device_description(engine: Engine) -> str:
+    """Show the actual card and runtime; AMD's torch device is named cuda."""
+    if engine.device == "cuda":
+        import torch
+        runtime = "ROCm" if torch.version.hip else "CUDA"
+        return f"{runtime}: {torch.cuda.get_device_name(0)} ({engine.dtype})"
+    return f"{engine.device} ({engine.dtype})"
 
 
 @dataclass
@@ -637,7 +660,7 @@ def main() -> int:
                     type="ready",
                     version=PROTOCOL_VERSION,
                     ready=True,
-                    detail=f"{CLONE_MODEL} + {DESIGN_MODEL} on {engine.device} ({engine.dtype})",
+                    detail=f"{CLONE_MODEL} + {DESIGN_MODEL} on {device_description(engine)}",
                 )
             elif op == "design":
                 do_design(engine, args.work, request)

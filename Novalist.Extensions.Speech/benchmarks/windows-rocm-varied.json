@@ -1,0 +1,74 @@
+{
+  "measured": "2026-09-10",
+  "default": {
+    "find_mode": null,
+    "runs": [
+      {
+        "text": "The next morning she opened the window. The street was quiet, and the garden smelled of fresh rain.",
+        "generate_seconds": 10.230830100001185,
+        "decode_seconds": 20.923285400000168,
+        "total_seconds": 31.15740630000073,
+        "audio_seconds": 6.56,
+        "finite": true
+      },
+      {
+        "text": "A small bird landed on the fence. She watched it for a moment before turning back to her desk.",
+        "generate_seconds": 8.601548099992215,
+        "decode_seconds": 75.2016944999923,
+        "total_seconds": 83.80476030000136,
+        "audio_seconds": 5.92,
+        "finite": true
+      }
+    ]
+  },
+  "fast": {
+    "find_mode": "FAST",
+    "runs": [
+      {
+        "text": "The next morning she opened the window. The street was quiet, and the garden smelled of fresh rain.",
+        "generate_seconds": 9.179078700006357,
+        "decode_seconds": 1.1001837000076193,
+        "total_seconds": 10.282197799999267,
+        "audio_seconds": 6.64,
+        "finite": true
+      },
+      {
+        "text": "A small bird landed on the fence. She watched it for a moment before turning back to her desk.",
+        "generate_seconds": 7.226849400001811,
+        "decode_seconds": 0.1929939999972703,
+        "total_seconds": 7.421104499997455,
+        "audio_seconds": 5.76,
+        "finite": true
+      }
+    ]
+  },
+  "sidecar_default_fast": {
+    "find_mode": null,
+    "runs": [
+      {
+        "text": "The next morning she opened the window. The street was quiet, and the garden smelled of fresh rain.",
+        "generate_seconds": 9.548946900002193,
+        "decode_seconds": 0.4597178999974858,
+        "total_seconds": 10.011681899995892,
+        "audio_seconds": 6.64,
+        "finite": true
+      },
+      {
+        "text": "A small bird landed on the fence. She watched it for a moment before turning back to her desk.",
+        "generate_seconds": 7.198913199987146,
+        "decode_seconds": 0.21647329999541398,
+        "total_seconds": 7.416421100002481,
+        "audio_seconds": 5.76,
+        "finite": true
+      },
+      {
+        "text": "The letter was still there, folded beside the lamp. She reached for it, then stopped and listened to the footsteps in the hall.",
+        "generate_seconds": 9.880858200005605,
+        "decode_seconds": 0.22588769999856595,
+        "total_seconds": 10.107942500006175,
+        "audio_seconds": 7.92,
+        "finite": true
+      }
+    ]
+  }
+}

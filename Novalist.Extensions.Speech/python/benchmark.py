@@ -62,6 +62,8 @@ def main():
     model_id = "Qwen/Qwen3-TTS-12Hz-1.7B-" + ("VoiceDesign" if args.mode == "design" else "Base")
     snapshot = snapshot_download(model_id, cache_dir=str(args.cache), local_files_only=True)
     report = dict(mode=args.mode, dtype=str(engine.dtype), device=engine.device,
+                  device_description=sidecar.device_description(engine),
+                  operating_system=platform.platform(), hip=torch.version.hip,
                   torch=torch.__version__, macos=platform.mac_ver()[0],
                   architecture=platform.machine(), revision=Path(snapshot).name,
                   language=args.language, runs=[],
@@ -96,6 +98,8 @@ def main():
     for index in range(args.runs):
         sidecar.seed_torch(42)
         sync()
+        if engine.device == "cuda":
+            torch.cuda.reset_peak_memory_stats()
         started = time.perf_counter()
         profiler = cProfile.Profile() if args.profile and index == args.runs - 1 else contextlib.nullcontext()
         inference = torch.inference_mode() if args.inference_mode else contextlib.nullcontext()
@@ -124,6 +128,9 @@ def main():
         if engine.device == "mps":
             result["mps_allocated_bytes"] = torch.mps.current_allocated_memory()
             result["mps_driver_bytes"] = torch.mps.driver_allocated_memory()
+        elif engine.device == "cuda":
+            result["gpu_peak_allocated_bytes"] = torch.cuda.max_memory_allocated()
+            result["gpu_peak_reserved_bytes"] = torch.cuda.max_memory_reserved()
         sidecar.write_wav(str(args.output / f"{args.mode}-{index}.wav"), wav, sr)
         report["runs"].append(result)
         (args.output / "results.json").write_text(json.dumps(report, indent=2) + "\n")

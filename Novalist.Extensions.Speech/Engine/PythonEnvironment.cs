@@ -65,15 +65,22 @@ internal sealed class PythonEnvironment
 
     private readonly string _root;
     private readonly bool _useMlx;
+    private readonly string _gpu;
+    private readonly Func<string, string[], CancellationToken, Action<string>?,
+        Task<(int ExitCode, string Output, string Error)>> _run;
 
-    public PythonEnvironment(string root, bool useMlx = false)
+    public PythonEnvironment(string root, bool useMlx = false, string? gpu = null,
+        Func<string, string[], CancellationToken, Action<string>?,
+            Task<(int ExitCode, string Output, string Error)>>? run = null)
     {
         _root = root;
         _useMlx = useMlx;
+        _gpu = useMlx ? "cpu" : gpu ?? WindowsGpu.Detect();
+        _run = run ?? RunAsync;
     }
 
     /// <summary>Where the environment lives.</summary>
-    public string VenvPath => Path.Combine(_root, _useMlx ? "venv-mlx" : "venv");
+    public string VenvPath => Path.Combine(_root, _useMlx ? "venv-mlx" : _gpu == "rocm" ? "venv-rocm" : "venv");
 
     /// <summary>The interpreter inside it.</summary>
     public string VenvPython => OperatingSystem.IsWindows()
@@ -104,7 +111,7 @@ internal sealed class PythonEnvironment
         return recipe.Length > 0 && File.Exists(VenvPython) && ReadMarker() == recipe;
     }
 
-    private string Marker => Path.Combine(_root, _useMlx ? "installed-mlx.txt" : "installed.txt");
+    private string Marker => Path.Combine(_root, _useMlx ? "installed-mlx.txt" : _gpu == "rocm" ? "installed-rocm.txt" : "installed.txt");
 
     /// <summary>What the marker says was installed, or empty when nothing has
     /// been - including when it cannot be read, which comes to the same thing
@@ -128,12 +135,17 @@ internal sealed class PythonEnvironment
     /// Of the file's own contents, so somebody who edited theirs for their own
     /// card keeps their environment until they change it again.
     /// </summary>
-    private static string Recipe(string requirements)
+    internal string Recipe(string requirements)
     {
         try
         {
-            return Convert.ToHexString(
-                System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(requirements)));
+            var content = File.ReadAllBytes(requirements);
+            // Installer changes must invalidate old CPU-only installs too.
+            // MLX keeps its existing environment and marker.
+            if (!_useMlx)
+                content = [.. content, .. System.Text.Encoding.UTF8.GetBytes(
+                    "\nwindows-gpu-v1:" + _gpu + string.Join('\n', GpuPackages(_gpu)))];
+            return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(content));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -163,6 +175,9 @@ internal sealed class PythonEnvironment
         // first thing that takes a noticeable moment, and a dialog that has not
         // changed since it opened reads as one that never will.
         progress?.Report(("looking-for-python", null, string.Empty));
+        var gpu = _gpu;
+        if (!_useMlx && !OperatingSystem.IsWindows() && await HasNvidiaAsync(cancellationToken))
+            gpu = "cuda";
         var python = await FindPythonAsync(cancellationToken);
 
         Directory.CreateDirectory(_root);
@@ -205,9 +220,12 @@ internal sealed class PythonEnvironment
         // that has not changed for four minutes is indistinguishable from a
         // hang, and this step legitimately takes that long.
         progress?.Report(("downloading", null, string.Empty));
-        var install = await RunAsync(
+        // Resolve the model dependencies and the chosen GPU wheels together;
+        // do not download a CPU torch first or let a later pip upgrade replace
+        // the selected runtime. ROCm uses AMD's CPython 3.12 Windows wheels.
+        var install = await _run(
             VenvPython,
-            ["-m", "pip", "install", "--disable-pip-version-check", "-r", requirements],
+            ["-m", "pip", "install", "--disable-pip-version-check", "-r", requirements, .. GpuPackages(gpu)],
             cancellationToken,
             line =>
             {
@@ -230,37 +248,14 @@ internal sealed class PythonEnvironment
             return "install-failed: " + Short(install.Error);
         }
 
-        // PyPI's torch on Windows is the CPU build, and pip has no way to know
-        // there is a graphics card in the machine. Left alone, somebody whose
-        // card could read a chapter in a minute waits an hour instead and is
-        // told only "on cpu" - which reads as a decision we made rather than a
-        // wheel we failed to ask for.
-        if (!_useMlx && await HasNvidiaAsync(cancellationToken))
+        if (!_useMlx && gpu != "cpu")
         {
-            progress?.Report(("downloading-cuda", null, string.Empty));
-            var cuda = await RunAsync(
-                VenvPython,
-                [
-                    "-m", "pip", "install", "--disable-pip-version-check",
-                    // Without this pip sees a torch already installed, decides
-                    // the requirement is met, and leaves the CPU build in place -
-                    // reporting success while changing nothing.
-                    "--upgrade",
-                    "--index-url", CudaIndex, "torch", "torchaudio"
-                ],
-                cancellationToken,
-                line =>
-                {
-                    if (Interesting(line) is { } said)
-                        progress?.Report(("downloading-cuda", said.Fraction, said.Text));
-                });
-
-            // Not fatal. A machine that cannot fetch the CUDA build still has a
-            // working CPU one, and a slow reading beats no reading - but the
-            // reason is written down, because "why is this on cpu" is the
-            // question it will raise.
-            if (cuda.ExitCode != 0)
-                await WriteFailureAsync(cuda.Output + "\n" + cuda.Error, cancellationToken);
+            var probe = await _run(VenvPython, ["-c", GpuProbe(gpu)], cancellationToken, null);
+            if (probe.ExitCode != 0)
+            {
+                await WriteFailureAsync(probe.Output + "\n" + probe.Error, cancellationToken);
+                return "gpu-unavailable";
+            }
         }
 
         Discard(FailurePath);
@@ -274,37 +269,48 @@ internal sealed class PythonEnvironment
     private async Task<string?> SystemVenvAsync(
         (string Executable, string[] Prefix) python, CancellationToken cancellationToken)
     {
-        var (code, _, error) = await RunAsync(
+        var (code, _, error) = await _run(
             python.Executable,
             [.. python.Prefix, "-m", "venv", VenvPath],
-            cancellationToken);
+            cancellationToken, null);
         return code == 0 ? null : "venv-failed: " + Short(error);
     }
 
     /// <summary>
-    /// Where the CUDA builds of torch live.
-    ///
-    /// A specific CUDA release rather than "latest": the index is per release,
-    /// and which one to ask for is decided by what the newest cards need.
-    /// Blackwell parts - the 50-series - are compute capability 12.0, and only
-    /// builds from an index this new carry kernels for them. An older one
-    /// installs happily and then fails at the first matrix multiply with "no
-    /// kernel image is available for execution on the device".
-    ///
-    /// It also has to be an index somebody is still publishing to. The previous
-    /// value, cu128, stopped at torch 2.9.1 for Windows while the current
-    /// indexes carry 2.13 - so "upgrade torch from this index" quietly moved
-    /// torch *backwards* off whatever the model had installed, and reported
-    /// success. Checked against the live index before it is used.
+    /// Matched torch/torchaudio builds. CUDA 12.8 covers RTX 40/50-series
+    /// without imposing CUDA 13's driver floor. Versions are explicit so pip
+    /// cannot prefer a newer CPU build. AMD's official Windows 7.2.1 recipe:
+    /// https://rocm.docs.amd.com/projects/radeon-ryzen/en/docs-7.2.1/docs/install/installrad/windows/install-pytorch.html
     /// </summary>
-    private const string CudaIndex = "https://download.pytorch.org/whl/cu130";
+    internal static string[] GpuPackages(string gpu) => gpu switch
+    {
+        "cuda" => ["--extra-index-url", "https://download.pytorch.org/whl/cu128",
+            "torch==2.9.1+cu128", "torchaudio==2.9.1+cu128"],
+        "rocm" => [.. new[] {
+            "rocm_sdk_core-7.2.1-py3-none-win_amd64.whl",
+            "rocm_sdk_devel-7.2.1-py3-none-win_amd64.whl",
+            "rocm_sdk_libraries_custom-7.2.1-py3-none-win_amd64.whl",
+            "rocm-7.2.1.tar.gz",
+            "torch-2.9.1%2Brocm7.2.1-cp312-cp312-win_amd64.whl",
+            "torchaudio-2.9.1%2Brocm7.2.1-cp312-cp312-win_amd64.whl"
+        }.Select(file => "https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/" + file)],
+        _ => []
+    };
+
+    internal static string GpuProbe(string gpu) =>
+        "import torch; assert torch.cuda.is_available(), 'GPU unavailable; check the graphics driver'; "
+        + (gpu == "rocm" ? "assert torch.version.hip, 'Expected AMD ROCm torch'; "
+            : "assert torch.version.cuda, 'Expected NVIDIA CUDA torch'; ")
+        + "x = torch.ones((2, 2), device='cuda', dtype=torch.bfloat16); "
+        + "y = x @ x; torch.cuda.synchronize(); assert torch.isfinite(y).all().item(); "
+        + "print(torch.cuda.get_device_name(0))";
 
     /// <summary>Whether this machine has an NVIDIA card worth fetching a CUDA
     /// build for. Asked of the driver rather than inferred from the platform.</summary>
     internal async Task<bool> HasNvidiaAsync(CancellationToken cancellationToken)
     {
-        var (code, output, _) = await RunAsync(
-            "nvidia-smi", ["--query-gpu=name", "--format=csv,noheader"], cancellationToken);
+        var (code, output, _) = await _run(
+            "nvidia-smi", ["--query-gpu=name", "--format=csv,noheader"], cancellationToken, null);
         return code == 0 && output.Trim().Length > 0;
     }
 
@@ -317,16 +323,23 @@ internal sealed class PythonEnvironment
     {
         foreach (var (executable, prefix) in Candidates())
         {
-            var (code, output, _) = await RunAsync(
-                executable, [.. prefix, "--version"], cancellationToken);
-            if (code != 0 || !IsUsable(output))
+            var (code, output, _) = await _run(
+                executable, [.. prefix, "--version"], cancellationToken, null);
+            if (code != 0 || !IsUsable(output, _gpu == "rocm"))
                 continue;
+            if (OperatingSystem.IsWindows() && _gpu != "cpu")
+            {
+                var (bitsCode, bits, _) = await _run(executable,
+                    [.. prefix, "-c", "import struct; print(struct.calcsize('P') * 8)"], cancellationToken, null);
+                if (bitsCode != 0 || bits.Trim() != "64")
+                    continue;
+            }
             if (_useMlx)
             {
                 // An Intel interpreter under Rosetta cannot load MLX's ARM64
                 // wheels. Keep looking, then fetch a native private Python.
-                var (archCode, probe, _) = await RunAsync(executable,
-                    [.. prefix, "-c", "import os, platform, sys; print(platform.machine()); print(os.path.realpath(sys.executable))"], cancellationToken);
+                var (archCode, probe, _) = await _run(executable,
+                    [.. prefix, "-c", "import os, platform, sys; print(platform.machine()); print(os.path.realpath(sys.executable))"], cancellationToken, null);
                 using var lines = new StringReader(probe);
                 if (archCode != 0 || !IsNativeMlxPython(lines.ReadLine() ?? string.Empty))
                     continue;
@@ -356,7 +369,7 @@ internal sealed class PythonEnvironment
     /// for a machine that has nothing suitable. It follows the supported Qwen
     /// package classifiers while retaining the dependency-imposed 3.10 floor.
     /// </summary>
-    internal static bool IsUsable(string versionOutput)
+    internal static bool IsUsable(string versionOutput, bool rocm = false)
     {
         var text = versionOutput.Trim();
         var at = text.IndexOf("Python 3.", StringComparison.Ordinal);
@@ -368,7 +381,7 @@ internal sealed class PythonEnvironment
         if (!int.TryParse(digits, out var minor))
             return false;
 
-        return minor >= OldestSupportedMinor && minor <= NewestSupportedMinor;
+        return rocm ? minor == 12 : minor >= OldestSupportedMinor && minor <= NewestSupportedMinor;
     }
 
     internal static bool IsNativeMlxPython(string architecture)
@@ -451,11 +464,20 @@ internal sealed class PythonEnvironment
         {
             using var process = Process.Start(info);
             if (process == null) return (-1, string.Empty, "did not start");
+            using var cancelled = cancellationToken.Register(() =>
+            {
+                // Cancel must stop pip too, before another Prepare can rebuild
+                // the environment it is still writing into.
+                try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+                catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { }
+            });
 
             if (onLine == null)
             {
-                var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-                var error = await process.StandardError.ReadToEndAsync(cancellationToken);
+                var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+                var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+                var output = await outputTask;
+                var error = await stderrTask;
                 await process.WaitForExitAsync(cancellationToken);
                 // Some builds print the version to stderr.
                 return (process.ExitCode, output + error, error);

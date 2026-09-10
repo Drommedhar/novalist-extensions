@@ -1,4 +1,5 @@
 {
+  "speech.gpuUnavailable": "Die GPU-Laufzeit wurde installiert, konnte aber auf deiner Grafikkarte nicht ausgeführt werden. Prüfe den von der Speech-Erweiterung benötigten Grafiktreiber und wähle danach erneut Vorbereiten. Technische Details stehen in install-failed.txt im Anwendungsdatenordner dieser Erweiterung.",
   "speech.preparing": "Sprach-Engine wird vorbereitet",
   "speech.noPython": "Es konnte kein Python für die Sprachmodelle gefunden oder heruntergeladen werden. Prüfen Sie die Verbindung und drücken Sie erneut auf Vorbereiten.",
   "speech.installFailed": "Die Sprachumgebung konnte nicht eingerichtet werden. Was pip gemeldet hat, steht in install-failed.txt im Ordner dieser Erweiterung in Novalists Anwendungsdaten.",

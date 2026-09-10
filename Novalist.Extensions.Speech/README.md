@@ -83,17 +83,77 @@ silently treated as Qwen voices.
 
 - Python 3.10–3.13. A suitable interpreter is used when present or fetched with
   [uv](https://github.com/astral-sh/uv) into the extension's private folder.
-- Native Apple Silicon macOS uses MLX with BF16 Qwen weights. Windows, Linux,
-  and Intel/Rosetta macOS retain PyTorch, using CUDA or MPS where available
-  and CPU otherwise.
-- About 10 GB on Apple Silicon, or 16 GB elsewhere, for the environment and both 1.7B
-  checkpoints. The model cache is kept under the extension data folder.
+- Native Apple Silicon macOS uses MLX with BF16 Qwen weights. PyTorch uses
+  NVIDIA CUDA, AMD ROCm on supported Windows cards, or MPS where available;
+  other machines use CPU.
+- Allow about 10 GB on Apple Silicon, 16 GB for the usual PyTorch setup, and
+  extra space for AMD's runtime, package downloads and any retained older
+  environment. The model cache is kept under the extension data folder.
 - Enough memory for one checkpoint at a time. VoiceDesign and Base are unloaded
   before the other is loaded to keep peak VRAM bounded.
 
 The Speed control is implemented after synthesis with pitch-preserving time
 stretching. It does not alter the reference voice or inject a pace phrase into
 the manuscript.
+
+### Windows GPU preparation
+
+Update the extension and choose **Prepare** once. Existing Qwen voices and
+cached model weights are reused. Settings shows the actual card and runtime
+after preparation: **CUDA: NVIDIA …** or **ROCm: AMD Radeon …**. A CPU label
+means the GPU is not doing the speech generation; more system RAM does not
+change that.
+
+NVIDIA installs a matched PyTorch/torchaudio 2.9.1 CUDA 12.8 pair, including
+support for RTX 40/50-series cards. The installer requests GPU wheels during
+dependency resolution so a newer CPU wheel cannot take their place.
+
+On Windows x64, supported Radeon cards get a separate `venv-rocm`, using
+Python 3.12 and AMD's pinned ROCm 7.2.1/PyTorch 2.9.1 wheels. Python is fetched
+privately when needed. The allowlist follows AMD's Windows matrix: RX 9070 XT,
+RX 9070, RX 9060 XT, RX 7900 XTX, RX 7700, AI PRO R9700 and PRO W7900
+(including Dual Slot). Other Radeon models retain CPU support. Machines with
+both NVIDIA and AMD adapters prefer NVIDIA.
+
+See [AMD's driver prerequisites and installation recipe](https://rocm.docs.amd.com/projects/radeon-ryzen/en/docs-7.2.1/docs/install/installrad/windows/install-pytorch.html).
+That release documents Adrenalin 26.2.2; the local RX 9070 XT validation also
+uses 26.9.1. No system driver is installed by the extension. PyTorch calls AMD
+devices `cuda` internally; the settings label distinguishes ROCm from CUDA.
+
+Preparation executes a BF16 matrix operation on the GPU before marking the
+environment ready. Download or GPU failures retain `install-failed.txt` and
+leave preparation retryable. The prior CPU environment remains on disk during
+AMD migration; it is not used for GPU narration.
+
+See the [RX 9070 XT validation](benchmarks/windows-rocm.md) for measured
+first-use and warm generation times, memory use, and reproduction commands.
+
+Windows ROCm also defaults to MIOpen's `FAST` kernel selection before the first
+GPU operation. This avoids lengthy convolution searches when each new passage
+has a different audio length. Previously those searches could take tens of
+seconds even after the model was warm. An explicit `MIOPEN_FIND_MODE` setting
+is respected. This update needs a restart, with no additional preparation or
+model download. The 1.7B model can still generate more slowly than playback.
+
+### Book size and rendering time
+
+Books are processed in passages, with resumable chapter output for audiobook
+export. A 50,000-word manuscript does not have to fit into the model's context
+at once. Generation time and disk space are the practical constraints, and
+GPU memory must fit one model plus the current passage's working memory.
+
+At the host's estimate of 155 words/minute, 50,000 words is about 5 h 23 min.
+Qwen's 24 kHz mono, 16-bit WAV is about 0.93 GB (0.87 GiB) for that duration;
+the host's 64 kb/s MP3/M4B export is about 155 MB, plus metadata and cover art.
+These are estimates; pauses and speaking pace change the result. Playback
+cache, chapter WAVs kept for resuming, and exported copies can coexist. Allow
+a few GB per book in addition to the shared speech runtime and model files.
+
+Benchmark a representative chapter to estimate production time. The export
+panel learns from completed renders. More RAM helps only if memory was the
+constraint; the playback Speed control stretches generated audio and does not
+make the model compute faster. Replaying unchanged cached passages avoids
+synthesis, while generating new passages can still be slower than playback.
 
 ### macOS performance
 

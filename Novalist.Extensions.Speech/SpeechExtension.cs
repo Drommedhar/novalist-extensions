@@ -285,9 +285,10 @@ public sealed class SpeechExtension :
         {
             if (!_python.IsBuiltFor(RequirementsPath()))
             {
+                _engine.Stop();
                 var failure = await _python.BuildAsync(
                     RequirementsPath(),
-                    new Progress<(string Step, double? Fraction, string Detail)>(p =>
+                    new Inline<(string Step, double? Fraction, string Detail)>(p =>
                         ((IProgress<VoiceEnginePrepare>)report).Report(new VoiceEnginePrepare
                         {
                             Step = p.Step,
@@ -378,6 +379,7 @@ public sealed class SpeechExtension :
             => T("speech.pythonFetchFailed", fault),
         "sidecar-exited" or "version" => T("speech.notReady", fault),
         "no-answer" => T("speech.noAnswer", fault),
+        "gpu-unavailable" => T("speech.gpuUnavailable", fault),
         _ when fault.StartsWith("venv-failed", StringComparison.Ordinal)
             || fault.StartsWith("install-failed", StringComparison.Ordinal)
             => T("speech.installFailed", fault),

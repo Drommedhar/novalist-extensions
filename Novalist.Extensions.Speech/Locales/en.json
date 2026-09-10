@@ -2,6 +2,7 @@
   "speech.preparing": "Preparing the speech engine",
   "speech.noPython": "No Python could be found or downloaded for the speech models. Check the connection and press Prepare again.",
   "speech.installFailed": "The speech environment could not be built. What pip reported is in install-failed.txt, in this extension's folder under Novalist's application data.",
+  "speech.gpuUnavailable": "The GPU runtime was installed but could not run on your graphics card. Check the graphics driver required by the Speech extension, then press Prepare again. Technical details are in install-failed.txt in this extension's application-data folder.",
   "speech.notReady": "The speech engine is not ready yet.",
   "speech.step.starting": "Starting",
   "speech.step.environment": "Building the Python environment",

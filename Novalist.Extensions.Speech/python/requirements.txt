@@ -4,5 +4,5 @@
 qwen-tts==0.1.1
 
 # qwen-tts already depends on librosa, soundfile, torch and torchaudio. The
-# environment builder replaces PyPI's CPU torch with the matching CUDA wheel on
-# NVIDIA machines after this file is installed.
+# environment builder resolves these together with matched CUDA wheels on
+# NVIDIA machines or AMD's native ROCm wheels on supported Windows Radeon GPUs.
