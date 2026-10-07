@@ -55,7 +55,9 @@ content and images, and informational inline-action results. Versions through
 Speech retains its existing 3.3.0 minimum.
 
 Development builds use the updated SDK source in the adjacent
-`novalist-official` checkout. CI follows that repository's default branch.
+`novalist-official` checkout. CI pins the compatible SDK source at
+[`9feaf6f9`](https://github.com/Drommedhar/novalist-official/commit/9feaf6f9624ffd22aba765b71327f41f3376b2e1);
+update that pin when adopting further SDK changes.
 Release builds explicitly use its **v3.5.4 tag**, so the matching updated host
 must be released before these extension releases can build. If the next host
 release uses a different version, update the release ref and manifest minimums

@@ -19,15 +19,12 @@ jobs:
         with:
           path: novalist-extension
 
-      # These track the SDK's main branch rather than a published package.
-      # Everything here uses SDK surface added for it, and a package only exists
-      # once the host that introduced it ships - so building against the source
-      # is the only thing that can work, and pretending otherwise produces a
-      # permanently red build.
+      # Includes the host contracts required before the v3.5.4 release.
       - name: Check out the SDK
         uses: actions/checkout@v4
         with:
           repository: Drommedhar/novalist-official
+          ref: 9feaf6f9624ffd22aba765b71327f41f3376b2e1
           path: novalist-official
 
       - name: Setup .NET
