@@ -112,22 +112,23 @@ internal sealed class ProcessSidecarChannel : ISidecarChannel
         if (_huggingFaceToken.Length > 0)
             info.Environment["HF_TOKEN"] = _huggingFaceToken;
 
-        _process = Process.Start(info)
+        var process = Process.Start(info)
             ?? throw new InvalidOperationException("the speech sidecar did not start");
+        _process = process;
+        var standardError = process.StandardError;
 
-        // Its stderr is the model's own chatter - progress bars, warnings about
-        // kernels. It goes to the debugger and nowhere else: it can quote a
-        // path, and a diagnostic log the writer may send us must never carry
-        // one.
+        // Drain stderr to prevent a full pipe blocking the model. Its raw output
+        // can contain manuscript text and paths, so it is not retained here.
         _ = Task.Run(async () =>
         {
             try
             {
-                while (await _process.StandardError.ReadLineAsync() is { } line)
-                    Debug.WriteLine("[Speech] " + line);
+                while (await standardError.ReadLineAsync() is not null) { }
             }
-            catch (IOException)
+            catch (Exception exception) when (exception is IOException or ObjectDisposedException)
             {
+                // aislop-ignore-next-line ai-slop/csharp-console-leftover -- Reports expected pipe shutdown by type without model text or filesystem paths.
+                Debug.WriteLine("[Speech] stderr closed: " + exception.GetType().Name);
             }
         }, cancellationToken);
 
@@ -152,8 +153,10 @@ internal sealed class ProcessSidecarChannel : ISidecarChannel
             if (!_process.HasExited)
                 _process.Kill(entireProcessTree: true);
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException exception)
         {
+            // aislop-ignore-next-line ai-slop/csharp-console-leftover -- Process-exit race diagnostics contain only an exception type.
+            Debug.WriteLine("[Speech] worker already exited: " + exception.GetType().Name);
         }
         finally
         {

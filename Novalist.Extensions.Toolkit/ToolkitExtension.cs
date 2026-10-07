@@ -60,7 +60,18 @@ public sealed class ToolkitExtension :
         foreach (var id in CommandIds) _host.UnregisterCommand(id);
     }
 
-    private void OnSceneSaved(SceneInfo scene) => _sprint.Update(ProjectWords());
+    private void OnSceneSaved(SceneInfo scene)
+    {
+        if (CheckSprintScope()) return;
+        _sprint.Update(ProjectWords());
+    }
+
+    private bool CheckSprintScope()
+    {
+        if (!_sprint.StopIfScopeChanged(Sprint.Scope(_host.ProjectService), DateTimeOffset.UtcNow)) return false;
+        SaveSprint();
+        return true;
+    }
 
     /// <summary>
     /// The whole book's word count. The sprint measures against this rather than
@@ -103,6 +114,7 @@ public sealed class ToolkitExtension :
             // thing to get out of step.
             OnRefresh = () =>
             {
+                if (CheckSprintScope()) return;
                 if (_sprint.Tick(DateTimeOffset.UtcNow) != null) SaveSprint();
             }
         }
@@ -179,8 +191,7 @@ public sealed class ToolkitExtension :
             : new InlineActionResult
             {
                 Text = string.Join("  ", senses.Select((s, i) => $"{i + 1}. {s}")),
-                Disposition = InlineActionDisposition.InsertAfterSelection,
-                Alternatives = [.. senses]
+                Disposition = InlineActionDisposition.ShowInformation
             };
 
     private InlineActionResult Synonyms(string word, IReadOnlyList<string> synonyms)
@@ -217,7 +228,7 @@ public sealed class ToolkitExtension :
             },
             _ =>
             {
-                _sprint.Start(ProjectWords(), DateTimeOffset.UtcNow);
+                _sprint.Start(ProjectWords(), DateTimeOffset.UtcNow, Sprint.Scope(_host.ProjectService));
                 _host.ShowNotification(_loc.T("toolkit.sprintStarted")
                     .Replace("{0}", _sprint.WritingMinutes.ToString()));
                 return Task.CompletedTask;

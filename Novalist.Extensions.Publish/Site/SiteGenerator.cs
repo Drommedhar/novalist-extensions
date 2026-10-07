@@ -37,7 +37,7 @@ public static partial class SiteGenerator
         // Slugs are worked out for everything first, because a page cannot link to
         // another until it knows what that page will be called - and two entries
         // with the same name must not overwrite each other's file.
-        var slugs = Slugs(entries);
+        var slugs = Slugs(entries, chapters.Count);
 
         files.Add(new SiteFile("index.html", Index(entries, chapters, slugs, options)));
 
@@ -61,10 +61,11 @@ public static partial class SiteGenerator
     /// A file name per entry. Two entries called the same thing get numbered
     /// rather than one silently replacing the other's page.
     /// </summary>
-    internal static Dictionary<string, string> Slugs(IReadOnlyList<SiteEntry> entries)
+    internal static Dictionary<string, string> Slugs(IReadOnlyList<SiteEntry> entries, int chapterCount = 0)
     {
         var slugs = new Dictionary<string, string>(StringComparer.Ordinal);
-        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "index" };
+        for (var chapter = 1; chapter <= chapterCount; chapter++) used.Add($"chapter-{chapter}");
 
         foreach (var entry in entries)
         {

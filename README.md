@@ -48,26 +48,24 @@ EPUB check has no business bumping the version of the writing timer.
 
 ## The SDK these need
 
-Everything here uses SDK surface that was added for it: research items, review
-remarks and suggested edits, scene metadata, structural editing, the command
-bus, export checks, the file picker, and an export context that carries the
-book's language, author, cover and chapter selection rather than just a path
-and a title.
+Formats, Insight, Publish and Toolkit require Novalist **3.5.4 or later**.
+These fixes use host contracts for scene export visibility, complete Codex
+content and images, and informational inline-action results. Versions through
+3.5.3 do not provide these contracts and must use an older extension release.
+Speech retains its existing 3.3.0 minimum.
 
-**That surface is not on NuGet yet.** The published `Novalist.Sdk` is 11.1.0,
-which predates all of it; these need 11.2.0, which reaches NuGet only when the
-host that introduced it is released. So every build here - local, CI and
-release - goes against the SDK **source**, and both workflows check out
-`novalist-official` alongside to get it.
+Development builds use the updated SDK source in the adjacent
+`novalist-official` checkout. CI follows that repository's default branch.
+Release builds explicitly use its **v3.5.4 tag**, so the matching updated host
+must be released before these extension releases can build. If the next host
+release uses a different version, update the release ref and manifest minimums
+together before tagging extensions. The SDK package version is managed by the
+host's CI; it is separate from the desktop version.
 
-Building against the package fails with `NU1102: Unable to find package
-Novalist.Sdk with version (>= 11.2.0)`. That message is deliberate: the version
-is pinned rather than a wildcard, because a wildcard quietly resolved to 11.1.0
-and turned "not published yet" into thirty missing-type errors across four
-projects.
-
-Once the SDK ships, `-p:UseLocalSdk=false` starts working and nothing else has
-to change.
+Package builds are optional and require an explicit exact version:
+`-p:UseLocalSdk=false -p:NovalistSdkVersion=<released-sdk-version>`.
+Choose the SDK shipped by the compatible host. No package version or range is
+selected automatically, and a missing version fails with a clear build error.
 
 ## Building locally
 
@@ -89,8 +87,9 @@ A build also copies each extension into your local Novalist extensions folder
 (`%APPDATA%/Novalist/Extensions/<Name>` on Windows), so a rebuild is all it takes
 to see the change in the running app.
 
-`-p:UseLocalSdk=false` switches to the published package. It will not work
-until the SDK ships - see above.
+For a build without deploying into your installed extensions, pass
+`-p:ExtensionFolder=`. For an optional package build, supply both
+`-p:UseLocalSdk=false` and the exact `NovalistSdkVersion` described above.
 
 ## Adding an extension to this repository
 

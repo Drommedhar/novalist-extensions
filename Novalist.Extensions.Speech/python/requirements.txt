@@ -2,6 +2,8 @@
 # Pin the adapter-facing API: an unbounded model package can change method
 # signatures or sampling defaults underneath an installed extension.
 qwen-tts==0.1.1
+numpy
+torch
 
 # qwen-tts already depends on librosa, soundfile, torch and torchaudio. The
 # environment builder resolves these together with matched CUDA wheels on

@@ -25,7 +25,6 @@ internal static class SidecarProtocol
     public const int Version = 4;
 }
 
-/// <summary>A request to the sidecar.</summary>
 internal sealed class SidecarRequest
 {
     /// <summary>"status", "design" or "render".</summary>
@@ -45,6 +44,9 @@ internal sealed class SidecarRequest
     /// </summary>
     [JsonPropertyName("id")]
     public string Id { get; init; } = string.Empty;
+
+    [JsonPropertyName("download")]
+    public bool Download { get; init; }
 
     [JsonPropertyName("voiceId")]
     public string? VoiceId { get; init; }
@@ -122,7 +124,6 @@ internal sealed class SidecarReply
     [JsonPropertyName("detail")]
     public string Detail { get; init; } = string.Empty;
 
-    /// <summary>The segment this clip belongs to.</summary>
     [JsonPropertyName("key")]
     public string Key { get; init; } = string.Empty;
 
@@ -138,7 +139,6 @@ internal sealed class SidecarReply
     [JsonPropertyName("seed")]
     public int? Seed { get; init; }
 
-    /// <summary>The exact words spoken in a designed reference clip.</summary>
     [JsonPropertyName("text")]
     public string Text { get; init; } = string.Empty;
 

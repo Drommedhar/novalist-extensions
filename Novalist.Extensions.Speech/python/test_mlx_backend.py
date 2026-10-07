@@ -34,6 +34,7 @@ class MacRouting(unittest.TestCase):
                 patch.object(sidecar, "emit"), patch.object(sidecar, "download_checkpoint", return_value="snapshot") as download, \
                 patch.object(mlx_backend.MlxQwenModel, "from_pretrained", return_value=object()) as load:
             engine = sidecar.new_engine()
+            engine.allow_download = True
             self.assertEqual("mlx", engine.device)
             self.assertEqual("bfloat16", engine.dtype)
             sidecar._load_checkpoint(engine, "model", "cloning")

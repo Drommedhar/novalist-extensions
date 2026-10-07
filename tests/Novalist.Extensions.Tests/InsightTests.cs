@@ -304,9 +304,8 @@ public class InsightTests
     }
 
     [Fact]
-    public void MissingImagesAreNotReportedWhenThereIsNoImageListToCheckAgainst()
-        // With no images at all, everything would look missing.
-        => Assert.DoesNotContain(
+    public void EmptyImageLibraryReportsReferencesAsMissing()
+        => Assert.Contains(
             ProjectHealth.Run(Input(
                 entities: [new HealthEntity("e1", "character", "Mira", ["x.png"])],
                 scenes: [Scene(text: "Mira")])),
@@ -534,7 +533,7 @@ public class InsightTests
         var state = new WorklistState();
         ContinuityWorklist.Rebase(state, [Entity("e1", "Mira", "aaa")]);
 
-        ContinuityWorklist.MarkReviewed(state, "s1", ["e1"]);
+        ContinuityWorklist.MarkReviewed(state, "s1", [("e1", "bbb")]);
         var items = ContinuityWorklist.Build(
             [Entity("e1", "Mira", "bbb")], [SceneRow("s1", "Arrival", "e1")], state);
 
@@ -546,7 +545,7 @@ public class InsightTests
     {
         var state = new WorklistState();
         ContinuityWorklist.Rebase(state, [Entity("e1", "Mira", "aaa"), Entity("e2", "Tobin", "xxx")]);
-        ContinuityWorklist.MarkReviewed(state, "s1", ["e1"]);
+        ContinuityWorklist.MarkReviewed(state, "s1", [("e1", "bbb")]);
 
         // Now a different entry the same scene mentions changes.
         var items = ContinuityWorklist.Build(
@@ -562,7 +561,7 @@ public class InsightTests
     {
         var state = new WorklistState();
         ContinuityWorklist.Rebase(state, [Entity("e1", "Mira", "aaa")]);
-        ContinuityWorklist.MarkReviewed(state, "s1", ["e1"]);
+        ContinuityWorklist.MarkReviewed(state, "s1", [("e1", "bbb")]);
 
         ContinuityWorklist.Rebase(state, [Entity("e1", "Mira", "bbb")]);
 
@@ -577,7 +576,7 @@ public class InsightTests
     {
         var state = new WorklistState();
         ContinuityWorklist.Rebase(state, [Entity("e1", "Mira", "aaa")]);
-        ContinuityWorklist.MarkReviewed(state, "s1", ["e1"]);
+        ContinuityWorklist.MarkReviewed(state, "s1", [("e1", "bbb")]);
 
         var items = ContinuityWorklist.Build(
             [Entity("e1", "Mira", "bbb")],
@@ -592,12 +591,12 @@ public class InsightTests
     {
         var state = new WorklistState();
         ContinuityWorklist.Rebase(state, [Entity("e1", "Mira", "aaa")]);
-        ContinuityWorklist.MarkReviewed(state, "s1", ["e1"]);
+        ContinuityWorklist.MarkReviewed(state, "s1", [("e1", "bbb")]);
 
         var restored = ContinuityWorklist.Deserialise(ContinuityWorklist.Serialise(state));
 
         Assert.Equal("aaa", restored.EntityHashes["e1"]);
-        Assert.Contains("s1|e1", restored.Reviewed);
+        Assert.Equal("bbb", restored.ReviewedFingerprints["s1|e1"]);
     }
 
     [Fact]

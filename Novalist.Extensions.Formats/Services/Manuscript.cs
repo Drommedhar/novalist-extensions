@@ -73,6 +73,7 @@ public sealed record Manuscript(
             var scenes = new List<MsScene>();
             foreach (var scene in host.ProjectService.GetScenesForChapter(chapter.Guid))
             {
+                if (scene.Inactive || scene.ExcludeFromExport) continue;
                 var html = await host.ProjectService.ReadSceneContentAsync(chapter.Guid, scene.Id);
                 scenes.Add(new MsScene(scene.Title, html, ToText(html)));
             }

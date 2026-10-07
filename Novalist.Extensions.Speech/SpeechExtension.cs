@@ -220,7 +220,7 @@ public sealed class SpeechExtension :
             // came to be left out of a list it belonged in.
             Error = NullIfBlank(Explain(_fault ?? status.Error)),
             Detail = status.Detail,
-            DownloadBytes = _python.IsBuiltFor(RequirementsPath())
+            DownloadBytes = _python.IsBuiltFor(RequirementsPath()) && SpeechModelCache.IsReady(_settingsRoot, SpeechRuntime.UseMlx)
                 ? null
                 : ApproximateDownloadBytes
         });
@@ -304,7 +304,7 @@ public sealed class SpeechExtension :
                 }
             }
 
-            await _engine.PrepareAsync(report, token);
+            await _engine.PrepareAsync(report, token, allowDownload: true);
             if (!_engine.IsReady)
             {
                 _fault = _engine.Fault;

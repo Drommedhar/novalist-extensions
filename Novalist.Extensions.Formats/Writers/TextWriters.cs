@@ -301,7 +301,8 @@ public static class TextWriters
     internal static string Escape(string text) => text
         .Replace("&", "&amp;")
         .Replace("<", "&lt;")
-        .Replace(">", "&gt;");
+        .Replace(">", "&gt;")
+        .Replace("\"", "&quot;");
 
     /// <summary>
     /// RTF is ASCII with escapes. A curly quote or an em dash - which prose is

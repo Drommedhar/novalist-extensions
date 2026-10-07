@@ -37,15 +37,15 @@ jobs:
 
       - name: Restore
         working-directory: novalist-extension
-        run: dotnet restore
+        run: dotnet restore -p:UseLocalSdk=true
 
       - name: Build
         working-directory: novalist-extension
-        run: dotnet build -c Release --no-restore
+        run: dotnet build -c Release --no-restore -p:UseLocalSdk=true -p:ExtensionFolder=
 
       - name: Test
         working-directory: novalist-extension
-        run: dotnet test -c Release --no-build
+        run: dotnet test -c Release --no-build -p:UseLocalSdk=true -p:ExtensionFolder=
 
       # The sidecar is Python and so is outside the .NET test run, which is how
       # it came to have no tests at all - and how the language, the reading rate

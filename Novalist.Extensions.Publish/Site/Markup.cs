@@ -69,7 +69,7 @@ public static partial class Markup
         if (string.IsNullOrWhiteSpace(text)) return string.Empty;
 
         var output = new StringBuilder();
-        var lines = Flatten(text!).Split('\n');
+        var lines = Flatten(text).Split('\n');
         var paragraph = new List<string>();
         var listItems = new List<string>();
         var listOrdered = false;
@@ -179,7 +179,7 @@ public static partial class Markup
         if (string.IsNullOrWhiteSpace(text)) return string.Empty;
 
         var output = new List<string>();
-        foreach (var raw in Flatten(text!).Split('\n'))
+        foreach (var raw in Flatten(text).Split('\n'))
         {
             var line = raw.TrimEnd();
             var heading = HeadingRegex().Match(line);
@@ -303,5 +303,6 @@ public static partial class Markup
     internal static string Escape(string text) => text
         .Replace("&", "&amp;")
         .Replace("<", "&lt;")
-        .Replace(">", "&gt;");
+        .Replace(">", "&gt;")
+        .Replace("\"", "&quot;");
 }

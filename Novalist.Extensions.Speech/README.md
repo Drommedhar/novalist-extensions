@@ -205,6 +205,11 @@ The sidecar and dependencies are isolated from system Python. Model traffic is
 limited to the user-started preparation download; narration itself runs locally
 from the cached checkpoints.
 
+Readiness requires both complete model snapshots, not just an installed Python
+environment. An interrupted preparation remains incomplete until you explicitly
+prepare it again. Stopping narration terminates the worker; the next request
+loads the saved checkpoints locally instead of waiting behind cancelled speech.
+
 ## Tests
 
 ```text

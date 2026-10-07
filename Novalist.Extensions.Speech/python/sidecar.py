@@ -22,7 +22,6 @@ import argparse
 import contextlib
 import gc
 import hashlib
-import io
 import json
 import os
 import platform
@@ -41,15 +40,24 @@ def use_mlx() -> bool:
     """MLX is the native Apple Silicon backend; other platforms keep torch."""
     if os.environ.get("NOVALIST_TTS_BACKEND") == "torch":
         return False
-    return sys.platform == "darwin" and platform.machine().lower() in {"arm64", "aarch64"}
+    return sys.platform == "darwin" and platform.machine().lower() in {
+        "arm64",
+        "aarch64",
+    }
 
 
 DESIGN_MODEL = os.environ.get(
-    "NOVALIST_TTS_DESIGN_MODEL", "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-bf16"
-    if use_mlx() else "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign")
+    "NOVALIST_TTS_DESIGN_MODEL",
+    "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-bf16"
+    if use_mlx()
+    else "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+)
 CLONE_MODEL = os.environ.get(
-    "NOVALIST_TTS_CLONE_MODEL", "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16"
-    if use_mlx() else "Qwen/Qwen3-TTS-12Hz-1.7B-Base")
+    "NOVALIST_TTS_CLONE_MODEL",
+    "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16"
+    if use_mlx()
+    else "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+)
 TEMPERATURE = float(os.environ.get("NOVALIST_TTS_TEMPERATURE", "0.9"))
 DESIGN_ATTEMPTS = 3
 
@@ -85,11 +93,13 @@ def note(message: str) -> None:
 def keep_failure(work: str, what: str, message: str) -> None:
     """Keep the full local error without putting manuscript text in a log."""
     try:
-        path = os.path.join(os.path.dirname(os.path.abspath(work)), f"{what}-failed.txt")
-        with io.open(path, "w", encoding="utf-8") as handle:
+        path = os.path.join(
+            os.path.dirname(os.path.abspath(work)), f"{what}-failed.txt"
+        )
+        with open(path, "w", encoding="utf-8") as handle:
             handle.write(message)
-    except OSError:
-        pass
+    except OSError as failure:
+        note(f"Could not retain the local diagnostic: {type(failure).__name__}")
 
 
 LANGUAGES = {
@@ -159,8 +169,8 @@ def seed_for(request: dict[str, Any]) -> int:
     """Use a pinned non-negative seed, or make a fresh design draw."""
     asked = request.get("seed")
     if isinstance(asked, bool) or not isinstance(asked, int) or asked < 0:
-        return secrets.randbelow(2 ** 31)
-    return asked % (2 ** 31)
+        return secrets.randbelow(2**31)
+    return asked % (2**31)
 
 
 def reading_rate(value: Any) -> float:
@@ -204,6 +214,7 @@ def device_description(engine: Engine) -> str:
     """Show the actual card and runtime; AMD's torch device is named cuda."""
     if engine.device == "cuda":
         import torch
+
         runtime = "ROCm" if torch.version.hip else "CUDA"
         return f"{runtime}: {torch.cuda.get_device_name(0)} ({engine.dtype})"
     return f"{engine.device} ({engine.dtype})"
@@ -218,6 +229,57 @@ class Engine:
     sample_rate: int = 24000
     clone_prompts: dict[str, tuple[str, Any]] = field(default_factory=dict)
     snapshots: dict[str, str] = field(default_factory=dict)
+    allow_download: bool = False
+
+
+def restore_models(engine: Engine, work: str) -> None:
+    path = os.path.join(os.path.dirname(os.path.abspath(work)), "models-ready.json")
+    try:
+        with open(path, encoding="utf-8") as source:
+            cache = json.load(source)
+        if cache["backend"] != ("mlx" if engine.device == "mlx" else "torch"):
+            return
+        for model_id in (DESIGN_MODEL, CLONE_MODEL):
+            model = cache["models"][model_id]
+            snapshot = model["path"]
+            if not model["files"] or not all(
+                os.path.isfile(os.path.join(snapshot, name))
+                and os.path.getsize(os.path.join(snapshot, name)) == size
+                for name, size in model["files"].items()
+            ):
+                return
+        engine.snapshots.update(
+            {
+                model_id: cache["models"][model_id]["path"]
+                for model_id in (DESIGN_MODEL, CLONE_MODEL)
+            }
+        )
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return
+
+
+def save_models(engine: Engine, work: str) -> None:
+    models = {}
+    for model_id in (DESIGN_MODEL, CLONE_MODEL):
+        snapshot = engine.snapshots[model_id]
+        files = {
+            os.path.relpath(os.path.join(directory, name), snapshot): os.path.getsize(
+                os.path.join(directory, name)
+            )
+            for directory, _, names in os.walk(snapshot)
+            for name in names
+        }
+        if not files:
+            raise RuntimeError("model snapshot is empty")
+        models[model_id] = {"path": snapshot, "files": files}
+    path = os.path.join(os.path.dirname(os.path.abspath(work)), "models-ready.json")
+    temporary = path + ".tmp"
+    with open(temporary, "w", encoding="utf-8") as output:
+        json.dump(
+            {"backend": "mlx" if engine.device == "mlx" else "torch", "models": models},
+            output,
+        )
+    os.replace(temporary, path)
 
 
 def new_engine() -> Engine:
@@ -225,6 +287,7 @@ def new_engine() -> Engine:
     emit(type="progress", step="importing")
     if use_mlx():
         import mlx.core as mx
+
         return Engine(device="mlx", dtype=mx.bfloat16)
     device = pick_device()
     dtype = model_dtype(device)
@@ -302,7 +365,8 @@ class HubDownloadProgress:
         amount = byte_count(self.current)
         detail = (
             f"{self.label} · {amount} / {byte_count(self.total)}"
-            if self.total > 0 else f"{self.label} · {amount}"
+            if self.total > 0
+            else f"{self.label} · {amount}"
         )
         emit(
             type="progress",
@@ -317,12 +381,12 @@ def download_checkpoint(model_id: str, detail: str, *, mlx: bool = False) -> str
     emit(type="progress", step="downloading-model", detail=detail)
     if mlx:
         from mlx_backend import download_checkpoint as download_mlx
+
         with contextlib.redirect_stdout(sys.stderr):
             # Model chatter belongs on stderr, but our progress replies must
             # still reach the protocol's original stdout.
             return download_mlx(model_id, detail, HubDownloadProgress)
-    from huggingface_hub import snapshot_download
-    import huggingface_hub.file_download as file_download
+    from huggingface_hub import file_download, snapshot_download
 
     original = file_download._get_progress_bar_context
 
@@ -366,14 +430,18 @@ def download_checkpoint(model_id: str, detail: str, *, mlx: bool = False) -> str
 def _load_checkpoint(engine: Engine, model_id: str, detail: str) -> Any:
     snapshot = engine.snapshots.get(model_id)
     if snapshot is None:
+        if not engine.allow_download:
+            raise RuntimeError("models-not-prepared")
         snapshot = download_checkpoint(model_id, detail, mlx=engine.device == "mlx")
         engine.snapshots[model_id] = snapshot
     emit(type="progress", step="loading-model", detail=detail)
     with contextlib.redirect_stdout(sys.stderr):
         if engine.device == "mlx":
             from mlx_backend import MlxQwenModel
+
             return MlxQwenModel.from_pretrained(snapshot)
         from qwen_tts import Qwen3TTSModel
+
         return Qwen3TTSModel.from_pretrained(snapshot, **_model_kwargs(engine))
 
 
@@ -386,17 +454,19 @@ def _release(engine: Engine, which: str) -> None:
     gc.collect()
     if engine.device == "mlx":
         import mlx.core as mx
+
         mx.synchronize()
         mx.clear_cache()
         return
     try:
         import torch
+
         if engine.device == "cuda":
             torch.cuda.empty_cache()
         elif engine.device == "mps":
             torch.mps.empty_cache()
-    except ImportError:
-        pass
+    except ImportError as failure:
+        note(f"Could not release the device cache: {type(failure).__name__}")
 
 
 def ensure_clone(engine: Engine) -> Any:
@@ -419,6 +489,7 @@ def ensure_design(engine: Engine) -> Any:
 
 def seed_torch(seed: int) -> None:
     import torch
+
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
@@ -427,6 +498,7 @@ def seed_torch(seed: int) -> None:
 def seed_engine(engine: Engine, seed: int) -> None:
     if engine.device == "mlx":
         import mlx.core as mx
+
         mx.random.seed(seed)
     else:
         seed_torch(seed)
@@ -436,7 +508,9 @@ def write_wav(path: str, audio: Any, sample_rate: int) -> float:
     """Write 16-bit mono PCM and return its duration in milliseconds."""
     import numpy as np
 
-    samples = np.asarray(audio.detach().cpu().numpy() if hasattr(audio, "detach") else audio)
+    samples = np.asarray(
+        audio.detach().cpu().numpy() if hasattr(audio, "detach") else audio
+    )
     samples = samples.squeeze()
     if samples.ndim > 1:
         samples = samples.mean(axis=0)
@@ -462,6 +536,7 @@ def stretch(audio: Any, rate: Any) -> Any:
         return audio
     import librosa
     import numpy as np
+
     return librosa.effects.time_stretch(np.asarray(audio, dtype=np.float32), rate=speed)
 
 
@@ -482,7 +557,7 @@ def do_design(engine: Engine, work: str, request: dict[str, Any]) -> None:
     used = base
     sample_rate = engine.sample_rate
     for attempt in range(DESIGN_ATTEMPTS):
-        used = (base + attempt) % (2 ** 31)
+        used = (base + attempt) % (2**31)
         try:
             seed_engine(engine, used)
             with contextlib.redirect_stdout(sys.stderr):
@@ -495,7 +570,7 @@ def do_design(engine: Engine, work: str, request: dict[str, Any]) -> None:
                 )
             wav = wavs[0] if wavs else None
         except RuntimeError:
-            note("design attempt %d could not be decoded" % (attempt + 1))
+            note(f"design attempt {attempt + 1} could not be decoded")
             wav = None
         if wav is not None:
             break
@@ -505,7 +580,9 @@ def do_design(engine: Engine, work: str, request: dict[str, Any]) -> None:
         return
 
     engine.sample_rate = int(sample_rate)
-    name = "design-%s.wav" % hashlib.sha256(voice_id.encode("utf-8")).hexdigest()[:12]
+    name = "design-{}.wav".format(
+        hashlib.sha256(voice_id.encode("utf-8")).hexdigest()[:12]
+    )
     duration = write_wav(os.path.join(work, name), wav, engine.sample_rate)
     emit(
         type="designed",
@@ -581,36 +658,50 @@ def do_render(engine: Engine, work: str, request: dict[str, Any]) -> None:
         try:
             reference_path = os.path.join(work, str(reference))
             prompt = clone_prompt(engine, model, voice_id, reference_path, transcript)
-            settings = dict(text=text, language=language, voice_clone_prompt=prompt,
-                            temperature=TEMPERATURE, subtalker_temperature=TEMPERATURE)
+            settings = {
+                "text": text,
+                "language": language,
+                "voice_clone_prompt": prompt,
+                "temperature": TEMPERATURE,
+                "subtalker_temperature": TEMPERATURE,
+            }
             with contextlib.redirect_stdout(sys.stderr):
                 if engine.device == "mlx":
                     import numpy as np
+
                     chunks = []
                     # Stretch the complete waveform at non-default speeds: a
                     # phase vocoder restarted every 320 ms creates audible seams.
                     live = request.get("stream", False) and reading_rate(rate) == 1.0
-                    with contextlib.closing(model.stream_voice_clone(**settings)) as results:
+                    with contextlib.closing(
+                        model.stream_voice_clone(**settings)
+                    ) as results:
                         for part, (audio, sample_rate) in enumerate(results):
                             chunks.append(audio)
                             if live:
-                                name = "chunk-%s-%04d-%06d.wav" % (CURRENT_ID or "x", index, part)
-                                duration = write_wav(os.path.join(work, name), audio, sample_rate)
-                                emit(type="chunk", key=key, file=name,
-                                     sampleRate=sample_rate, durationMs=duration)
+                                name = f"chunk-{CURRENT_ID or 'x'}-{index:04d}-{part:06d}.wav"
+                                duration = write_wav(
+                                    os.path.join(work, name), audio, sample_rate
+                                )
+                                emit(
+                                    type="chunk",
+                                    key=key,
+                                    file=name,
+                                    sampleRate=sample_rate,
+                                    durationMs=duration,
+                                )
                     wavs = [np.concatenate(chunks)] if chunks else []
                 else:
-                    wavs, sample_rate = model.generate_voice_clone(non_streaming_mode=True, **settings)
+                    wavs, sample_rate = model.generate_voice_clone(
+                        non_streaming_mode=True, **settings
+                    )
             if not wavs:
                 raise RuntimeError("generated no audio")
             wav = stretch(wavs[0], rate)
             engine.sample_rate = int(sample_rate)
 
-            name = "clip-%s-%04d-%s.wav" % (
-                CURRENT_ID or "x",
-                index,
-                hashlib.sha256(key.encode("utf-8")).hexdigest()[:10],
-            )
+            key_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()[:10]
+            name = f"clip-{CURRENT_ID or 'x'}-{index:04d}-{key_hash}.wav"
             duration = write_wav(os.path.join(work, name), wav, engine.sample_rate)
             emit(
                 type="clip",
@@ -649,13 +740,17 @@ def main() -> int:
         try:
             if engine is None and op in {"status", "design", "render"}:
                 engine = new_engine()
+                restore_models(engine, args.work)
 
             if op == "status":
+                engine.allow_download = request.get("download") is True
                 # Preparation means both checkpoints are present, not just the
                 # reader. Only one remains resident to keep peak VRAM bounded.
                 ensure_design(engine)
                 _release(engine, "design")
                 ensure_clone(engine)
+                save_models(engine, args.work)
+                engine.allow_download = False
                 emit(
                     type="ready",
                     version=PROTOCOL_VERSION,
@@ -674,6 +769,8 @@ def main() -> int:
             keep_failure(args.work, op or "request", trace)
             engine = None
             emit(type="error", error=type(failure).__name__)
+            if op == "render":
+                emit(type="done")
 
     return 0
 

@@ -45,6 +45,7 @@ internal sealed class VoiceEngine : IDisposable
     private int _requests;
     private string _detail = string.Empty;
     private string? _fault;
+    private readonly SemaphoreSlim _operation = new(1, 1);
 
     /// <param name="firstWord">How long the sidecar has to say anything at all.
     /// Injected so a test can assert the give-up without waiting two minutes for
@@ -75,7 +76,19 @@ internal sealed class VoiceEngine : IDisposable
     /// </summary>
     public async Task PrepareAsync(
         IProgress<VoiceEnginePrepare>? progress,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, bool allowDownload = false)
+    {
+        await _operation.WaitAsync(cancellationToken);
+        try { await PrepareCoreAsync(progress, cancellationToken, allowDownload); }
+        finally
+        {
+            if (cancellationToken.IsCancellationRequested) Stop();
+            _operation.Release();
+        }
+    }
+
+    private async Task PrepareCoreAsync(IProgress<VoiceEnginePrepare>? progress, CancellationToken cancellationToken,
+        bool allowDownload = false)
     {
         if (IsReady && _channel is { IsRunning: true })
             return;
@@ -94,7 +107,7 @@ internal sealed class VoiceEngine : IDisposable
         progress?.Report(new VoiceEnginePrepare { Step = "starting" });
 
         var id = NextId();
-        await SendAsync(new SidecarRequest { Op = "status", Id = id }, cancellationToken);
+        await SendAsync(new SidecarRequest { Op = "status", Id = id, Download = allowDownload }, cancellationToken);
 
         // Armed only for the first reply; cancelled the moment one arrives.
         using var mute = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -171,6 +184,17 @@ internal sealed class VoiceEngine : IDisposable
     public async Task<VoiceDesignResult> DesignAsync(
         VoiceBrief brief, CancellationToken cancellationToken = default)
     {
+        await _operation.WaitAsync(cancellationToken);
+        try { return await DesignCoreAsync(brief, cancellationToken); }
+        finally
+        {
+            if (cancellationToken.IsCancellationRequested) Stop();
+            _operation.Release();
+        }
+    }
+
+    private async Task<VoiceDesignResult> DesignCoreAsync(VoiceBrief brief, CancellationToken cancellationToken)
+    {
         await EnsureReadyAsync(cancellationToken);
 
         var id = NextId();
@@ -225,6 +249,23 @@ internal sealed class VoiceEngine : IDisposable
         NarrationRequest request,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        await _operation.WaitAsync(cancellationToken);
+        var finished = false;
+        try
+        {
+            await foreach (var clip in RenderCoreAsync(request, cancellationToken)) yield return clip;
+            finished = true;
+        }
+        finally
+        {
+            if (!finished || cancellationToken.IsCancellationRequested) Stop();
+            _operation.Release();
+        }
+    }
+
+    private async IAsyncEnumerable<NarrationClip> RenderCoreAsync(
+        NarrationRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
         await EnsureReadyAsync(cancellationToken);
         // Older hosts still render complete clips with the low-memory decoder.
         // Reflection keeps this optional new SDK member out of the JIT's member
@@ -232,36 +273,7 @@ internal sealed class VoiceEngine : IDisposable
         var audioChunk = typeof(NarrationRequest).GetProperty("AudioChunk")?.GetValue(request)
             as Action<NarrationClip>;
 
-        // The reference audio goes to disk once per render rather than into the
-        // message. The sidecar is told where, not what.
-        var voices = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var (voiceId, audio) in request.Voices)
-        {
-            var name = $"voice-{Sanitise(voiceId)}.wav";
-            await File.WriteAllBytesAsync(
-                Path.Combine(_workingDirectory, name), audio, cancellationToken);
-            voices[voiceId] = name;
-        }
-
-        var id = NextId();
-        await SendAsync(new SidecarRequest
-        {
-            Op = "render",
-            Stream = audioChunk != null,
-            Id = id,
-            Language = request.Language,
-            Rate = request.Rate,
-            Voices = voices,
-            VoiceTexts = new Dictionary<string, string>(
-                request.VoiceReferenceTexts, StringComparer.Ordinal),
-            Segments = [.. request.Segments.Select(s => new SidecarSegment
-            {
-                Key = s.Key,
-                Text = s.Text,
-                VoiceId = s.VoiceId,
-                IsDialogue = s.IsDialogue
-            })]
-        }, cancellationToken);
+        var id = await SendRenderAsync(request, audioChunk != null, cancellationToken);
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -282,6 +294,11 @@ internal sealed class VoiceEngine : IDisposable
             if (reply.Type == "error")
             {
                 yield return new NarrationClip { Key = reply.Key, Error = reply.Error ?? "render" };
+                if (reply.Key.Length == 0)
+                {
+                    Stop();
+                    yield break;
+                }
                 continue;
             }
             if (reply.Type == "chunk" && reply.File != null)
@@ -308,6 +325,42 @@ internal sealed class VoiceEngine : IDisposable
         }
     }
 
+    private async Task<string> SendRenderAsync(NarrationRequest request, bool stream, CancellationToken cancellationToken)
+    {
+        // The reference audio goes to disk once per render rather than into the
+        // message. The sidecar is told where, not what.
+        var voices = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (voiceId, audio) in request.Voices)
+        {
+            var name = $"voice-{Sanitise(voiceId)}.wav";
+            await File.WriteAllBytesAsync(
+                Path.Combine(_workingDirectory, name), audio, cancellationToken);
+            voices[voiceId] = name;
+        }
+
+        var id = NextId();
+        await SendAsync(new SidecarRequest
+        {
+            Op = "render",
+            Stream = stream,
+            Id = id,
+            Language = request.Language,
+            Rate = request.Rate,
+            Voices = voices,
+            VoiceTexts = new Dictionary<string, string>(
+                request.VoiceReferenceTexts, StringComparer.Ordinal),
+            Segments = [.. request.Segments.Select(s => new SidecarSegment
+            {
+                Key = s.Key,
+                Text = s.Text,
+                VoiceId = s.VoiceId,
+                IsDialogue = s.IsDialogue
+            })]
+        }, cancellationToken);
+
+        return id;
+    }
+
     /// <summary>
     /// Drops a voice's reference audio from the working directory.
     ///
@@ -323,8 +376,10 @@ internal sealed class VoiceEngine : IDisposable
             if (File.Exists(path))
                 File.Delete(path);
         }
-        catch (IOException)
+        catch (IOException exception)
         {
+            // aislop-ignore-next-line ai-slop/csharp-console-leftover -- Scratch cleanup failure records its type without a voice identifier or path.
+            System.Diagnostics.Debug.WriteLine("[Speech] voice cleanup failed: " + exception.GetType().Name);
         }
         return Task.CompletedTask;
     }
@@ -341,7 +396,7 @@ internal sealed class VoiceEngine : IDisposable
     private async Task EnsureReadyAsync(CancellationToken cancellationToken)
     {
         if (!IsReady || _channel is not { IsRunning: true })
-            await PrepareAsync(null, cancellationToken);
+            await PrepareCoreAsync(null, cancellationToken);
         if (!IsReady)
             throw new InvalidOperationException(_fault ?? "engine-not-ready");
     }
@@ -429,8 +484,10 @@ internal sealed class VoiceEngine : IDisposable
         {
             File.Delete(path);
         }
-        catch (IOException)
+        catch (IOException exception)
         {
+            // aislop-ignore-next-line ai-slop/csharp-console-leftover -- Scratch cleanup failure records its type without audio content or a path.
+            System.Diagnostics.Debug.WriteLine("[Speech] clip cleanup failed: " + exception.GetType().Name);
         }
         return bytes;
     }

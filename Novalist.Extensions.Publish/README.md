@@ -3,6 +3,9 @@
 Turns a project into a self-contained static website: a folder of HTML, CSS and
 images that opens from disk and uploads anywhere.
 
+This updated build requires Novalist 3.5.4 or later, the next desktop release
+with scene and Codex reader-visibility contracts. Hosts through 3.5.3 need an older extension release.
+
 ## What it builds
 
 - **The world** — an article per Codex entry, cross-linked the way the Wiki is,
@@ -17,10 +20,15 @@ a host, a bucket or a static-site service.
 
 ## What it does not do
 
-There is no audience scoping and no spoiler control. Everything selected is
-published to everyone who has the link, and the generator says so before it
-writes. If you need a reader to see chapter three and not chapter nine, publish
-two sites.
+Everyone with the link sees the same site. Inactive scenes, scenes excluded
+from export, and Codex entries or sections hidden from readers are omitted.
+There are no accounts or per-reader permissions.
+
+Republishing removes obsolete pages recorded in `.novalist-publish.json` and
+preserves unrelated files. Keep this manifest with the generated site. For a
+site made by an older version without a manifest, choose an empty output folder.
+Files are prepared before replacing the previous publication; cancelled writes
+leave the previous site intact.
 
 ## Installing
 

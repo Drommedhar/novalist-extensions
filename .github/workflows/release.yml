@@ -36,6 +36,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Drommedhar/novalist-official
+          ref: v3.5.4
           path: novalist-official
 
       - name: Setup .NET
@@ -86,20 +87,21 @@ jobs:
 
       - name: Restore
         working-directory: novalist-extension
-        run: dotnet restore "${{ steps.which.outputs.project }}"
+        run: dotnet restore "${{ steps.which.outputs.project }}" -p:UseLocalSdk=true
 
       - name: Build
         working-directory: novalist-extension
         run: >-
           dotnet build "${{ steps.which.outputs.project }}"
           -c ${{ env.CONFIGURATION }}
+          -p:UseLocalSdk=true -p:ExtensionFolder=
           --no-restore
 
       - name: Test
         working-directory: novalist-extension
         # The whole test project runs, not just this extension's tests: a change
         # to shared code that breaks a sibling should stop the release.
-        run: dotnet test tests/Novalist.Extensions.Tests -c ${{ env.CONFIGURATION }}
+        run: dotnet test tests/Novalist.Extensions.Tests -c ${{ env.CONFIGURATION }} -p:UseLocalSdk=true -p:ExtensionFolder=
 
       - name: Package
         working-directory: novalist-extension

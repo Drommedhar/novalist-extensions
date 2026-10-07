@@ -34,9 +34,15 @@ public sealed class SpeechTests : IDisposable
     {
         private readonly Queue<string> _replies;
 
-        public FakeChannel(IEnumerable<string> replies) => _replies = new(replies);
+        private readonly bool _stayOpen;
+        public FakeChannel(IEnumerable<string> replies, bool stayOpen = false)
+        {
+            _replies = new(replies);
+            _stayOpen = stayOpen;
+        }
 
         public List<string> Sent { get; } = [];
+        public TaskCompletionSource WaitingForReply { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool IsRunning { get; private set; }
         public bool Stopped { get; private set; }
 
@@ -52,8 +58,16 @@ public sealed class SpeechTests : IDisposable
             return Task.CompletedTask;
         }
 
-        public Task<string?> ReadAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult(_replies.Count > 0 ? _replies.Dequeue() : null);
+        public async Task<string?> ReadAsync(CancellationToken cancellationToken = default)
+        {
+            if (_replies.Count > 0) return _replies.Dequeue();
+            if (_stayOpen)
+            {
+                WaitingForReply.TrySetResult();
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+            return null;
+        }
 
         public void Stop()
         {
@@ -106,6 +120,73 @@ public sealed class SpeechTests : IDisposable
         => new(() => new FakeChannel(replies), _work);
 
     private VoiceEngine Engine(FakeChannel channel) => new(() => channel, _work);
+
+    [Fact]
+    public async Task FatalRenderErrorStopsEvenIfTheWorkerKeepsItsPipeOpen()
+    {
+        var channel = new FakeChannel([Ready(), "{\"type\":\"error\",\"error\":\"OutOfMemory\"}"], stayOpen: true);
+        using var engine = Engine(channel);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        var clips = new List<NarrationClip>();
+        await foreach (var clip in engine.RenderAsync(Request(), deadline.Token)) clips.Add(clip);
+        Assert.Equal("OutOfMemory", Assert.Single(clips).Error);
+        Assert.True(channel.Stopped);
+        Assert.False(engine.IsReady);
+    }
+
+    [Fact]
+    public async Task CancellingRenderKillsTheWorkerAndNextRenderStartsFresh()
+    {
+        var cancelled = new FakeChannel([Ready()], stayOpen: true);
+        var next = new FakeChannel([Ready(), "{\"type\":\"done\"}"]);
+        var channels = new Queue<ISidecarChannel>([cancelled, next]);
+        using var engine = new VoiceEngine(() => channels.Dequeue(), _work);
+        using var cancellation = new CancellationTokenSource();
+        await engine.PrepareAsync(null);
+        await using (var reading = engine.RenderAsync(Request(), cancellation.Token).GetAsyncEnumerator())
+        {
+            var pending = reading.MoveNextAsync().AsTask();
+            await cancelled.WaitingForReply.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+        }
+        Assert.True(cancelled.Stopped);
+        Assert.False(engine.IsReady);
+        await foreach (var _ in engine.RenderAsync(Request())) { }
+        Assert.Equal(2, next.Sent.Count);
+        Assert.Empty(channels);
+    }
+
+    [Fact]
+    public async Task OnlyExplicitPreparationPermitsDownloads()
+    {
+        var automatic = new FakeChannel([Ready(), "{\"type\":\"done\"}"]);
+        await foreach (var _ in Engine(automatic).RenderAsync(Request())) { }
+        using var automaticRequest = JsonDocument.Parse(automatic.Sent[0]);
+        Assert.False(automaticRequest.RootElement.GetProperty("download").GetBoolean());
+        var requested = new FakeChannel([Ready()]);
+        await Engine(requested).PrepareAsync(null, allowDownload: true);
+        using var requestedRequest = JsonDocument.Parse(requested.Sent[0]);
+        Assert.True(requestedRequest.RootElement.GetProperty("download").GetBoolean());
+    }
+
+    [Fact]
+    public void ModelReadinessRequiresBothCompleteSnapshotsForTheCurrentBackend()
+    {
+        Assert.False(SpeechModelCache.IsReady(_work, false));
+        File.WriteAllBytes(Path.Combine(_work, "weights.bin"), [1, 2, 3]);
+        var model = new { path = _work, files = new Dictionary<string, long> { ["weights.bin"] = 3 } };
+        File.WriteAllText(Path.Combine(_work, "models-ready.json"), JsonSerializer.Serialize(new
+        {
+            backend = "torch", models = new Dictionary<string, object> { ["design"] = model, ["clone"] = model }
+        }));
+        Assert.True(SpeechModelCache.IsReady(_work, false));
+        Assert.False(SpeechModelCache.IsReady(_work, true));
+        File.WriteAllBytes(Path.Combine(_work, "weights.bin"), [1]);
+        Assert.False(SpeechModelCache.IsReady(_work, false));
+        File.Delete(Path.Combine(_work, "weights.bin"));
+        Assert.False(SpeechModelCache.IsReady(_work, false));
+    }
 
     private static string Ready(bool ready = true, int version = SidecarProtocolVersion) => JsonSerializer.Serialize(
         new { type = "ready", version, ready, detail = "Qwen3-TTS VoiceDesign + Base on cuda" });

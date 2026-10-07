@@ -72,7 +72,8 @@ internal sealed class ReportController(IHostServices host, string extensionId) :
 
     private static readonly JsonSerializerOptions Json = new()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
     };
 
     public event Action<string>? MessagePosted;
@@ -228,7 +229,10 @@ internal sealed class ReportController(IHostServices host, string extensionId) :
             .ToList();
 
         return ProjectHealth.Run(new HealthInput(
-            entities, scenes, host.EntityService.GetProjectImages(), research));
+            entities, scenes, host.EntityService.GetProjectImages(), research)
+        {
+            Maps = [.. (await host.StoryService.GetMapsAsync()).Select(map => new HealthMap(map.Name, map.ImagePaths))]
+        });
     }
 
     private async Task<IReadOnlyList<DriftFinding>> DriftAsync()
@@ -461,9 +465,11 @@ internal sealed class ReportController(IHostServices host, string extensionId) :
             }
         }
 
+        var items = ContinuityWorklist.Build(entities, scenes, state);
+        await SaveStateAsync(state);
         return new
         {
-            items = ContinuityWorklist.Build(entities, scenes, state),
+            items,
             baseline = false,
             tracked = entities.Count
         };
@@ -476,7 +482,14 @@ internal sealed class ReportController(IHostServices host, string extensionId) :
 
         var state = await LoadStateAsync();
         var entities = await FingerprintsAsync();
-        ContinuityWorklist.MarkReviewed(state, sceneId, entities.Select(e => e.Id));
+        var chapter = host.ProjectService.GetChaptersOrdered().FirstOrDefault(c =>
+            host.ProjectService.GetScenesForChapter(c.Guid).Any(s => s.Id == sceneId));
+        if (chapter == null) return new { error = "No scene given." };
+        var mentions = await host.GetConfirmedMentionIdsAsync(chapter.Guid, sceneId);
+        ContinuityWorklist.MarkReviewed(state, sceneId, entities
+            .Where(e => mentions.Contains(e.Id) && state.EntityHashes.TryGetValue(e.Id, out var previous)
+                && previous != e.Fingerprint)
+            .Select(e => (e.Id, e.Fingerprint)));
         await SaveStateAsync(state);
         return await ContinuityAsync();
     }
@@ -496,17 +509,8 @@ internal sealed class ReportController(IHostServices host, string extensionId) :
         var fingerprints = new List<(string, string, string)>();
         foreach (var entry in await ReadEntriesAsync())
         {
-            // A character's real content is in their resolved profile, which is
-            // where the facts a scene could be relying on actually live.
-            var detailed = entry.TypeKey == "character"
-                ? await host.EntityService.GetCharacterDetailedAsync(entry.Id, null, null)
-                : null;
-            IEnumerable<(string Title, string Content)> sections =
-                detailed != null
-                    ? detailed.Sections.Select(s => (s.Title, s.Content))
-                    : entry.Sections;
             fingerprints.Add((entry.Id, entry.Name,
-                ContinuityWorklist.Fingerprint(entry.Name, entry.Description, sections)));
+                ContinuityWorklist.Fingerprint(entry.Name, entry.Description, entry.Sections)));
         }
         return fingerprints;
     }
@@ -523,30 +527,21 @@ internal sealed class ReportController(IHostServices host, string extensionId) :
 
     private async Task<List<Entry>> ReadEntriesAsync()
     {
+        var service = host.EntityService;
+        var ids = new List<(string Type, string Id)>();
+        ids.AddRange((await service.LoadCharactersAsync()).Select(e => ("character", e.Id)));
+        ids.AddRange((await service.LoadLocationsAsync()).Select(e => ("location", e.Id)));
+        ids.AddRange((await service.LoadItemsAsync()).Select(e => ("item", e.Id)));
+        ids.AddRange((await service.LoadLoreAsync()).Select(e => ("lore", e.Id)));
+        foreach (var type in service.GetCustomEntityTypes())
+            ids.AddRange((await service.LoadCustomEntitiesAsync(type.TypeKey)).Select(e => (type.TypeKey, e.Id)));
         var entries = new List<Entry>();
-
-        foreach (var character in await host.EntityService.LoadCharactersAsync())
+        foreach (var (type, id) in ids)
         {
-            var image = await host.EntityService.GetCharacterImagePathAsync(character.Id, null, null);
-            entries.Add(new Entry(
-                character.Id, "character", character.DisplayName, string.Empty, [],
-                image == null ? [] : [image]));
-        }
-        foreach (var location in await host.EntityService.LoadLocationsAsync())
-            entries.Add(new Entry(location.Id, "location", location.Name, string.Empty, [], []));
-        foreach (var item in await host.EntityService.LoadItemsAsync())
-            entries.Add(new Entry(item.Id, "item", item.Name, string.Empty, [], []));
-        foreach (var lore in await host.EntityService.LoadLoreAsync())
-            entries.Add(new Entry(lore.Id, "lore", lore.Name, string.Empty, [], []));
-
-        foreach (var type in host.EntityService.GetCustomEntityTypes())
-        {
-            foreach (var custom in await host.EntityService.LoadCustomEntitiesAsync(type.TypeKey))
-            {
-                entries.Add(new Entry(
-                    custom.Id, type.TypeKey, custom.Name, string.Empty,
-                    [.. (custom.Sections ?? []).Select(s => (s.Title, s.Content))], []));
-            }
+            var content = await service.GetEntityContentAsync(type, id);
+            if (content == null) continue;
+            entries.Add(new Entry(content.Id, type, content.Name, content.Description,
+                [.. content.Sections.Select(s => (s.Title, s.Content))], content.ImagePaths));
         }
 
         return entries;

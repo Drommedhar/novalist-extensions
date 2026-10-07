@@ -160,6 +160,7 @@ internal sealed class BoardController(
 
     private object SprintState()
     {
+        if (sprint.StopIfScopeChanged(Sprint.Scope(host.ProjectService), DateTimeOffset.UtcNow)) saveSprint();
         var snapshot = sprint.Snapshot(DateTimeOffset.UtcNow);
         var (words, minutes, rate) = sprint.Totals();
         return new
@@ -183,7 +184,7 @@ internal sealed class BoardController(
         var words = host.ProjectService.GetChaptersOrdered()
             .SelectMany(c => host.ProjectService.GetScenesForChapter(c.Guid))
             .Sum(s => s.WordCount);
-        sprint.Start(words, DateTimeOffset.UtcNow);
+        sprint.Start(words, DateTimeOffset.UtcNow, Sprint.Scope(host.ProjectService));
         return SprintState();
     }
 

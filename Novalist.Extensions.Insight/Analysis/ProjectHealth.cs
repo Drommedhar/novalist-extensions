@@ -21,7 +21,12 @@ public sealed record HealthInput(
     IReadOnlyList<HealthEntity> Entities,
     IReadOnlyList<HealthScene> Scenes,
     IReadOnlyList<string> ProjectImages,
-    IReadOnlyList<HealthResearch> Research);
+    IReadOnlyList<HealthResearch> Research)
+{
+    public IReadOnlyList<HealthMap> Maps { get; init; } = [];
+}
+
+public sealed record HealthMap(string Name, IReadOnlyList<string> ImagePaths);
 
 public sealed record HealthEntity(
     string Id, string TypeKey, string Name, IReadOnlyList<string> ImagePaths);
@@ -91,7 +96,7 @@ public static class ProjectHealth
             // and the writer cannot tell which one they got.
             foreach (var duplicate in input.Entities
                          .GroupBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
-                         .Where(g => g.Count() > 1 && scene.LinkTargets.Contains(
+                         .Where(g => g.Skip(1).Any() && scene.LinkTargets.Contains(
                              g.Key, StringComparer.OrdinalIgnoreCase))
                          .Select(g => g.Key)
                          .Distinct(StringComparer.OrdinalIgnoreCase))
@@ -139,6 +144,7 @@ public static class ProjectHealth
         var used = new HashSet<string>(
             input.Entities.SelectMany(e => e.ImagePaths)
                 .Concat(input.Scenes.SelectMany(s => s.ImagePaths))
+                .Concat(input.Maps.SelectMany(map => map.ImagePaths))
                 .Where(p => !string.IsNullOrWhiteSpace(p))
                 .Select(Normalise),
             StringComparer.OrdinalIgnoreCase);
@@ -161,16 +167,18 @@ public static class ProjectHealth
     {
         var present = new HashSet<string>(
             input.ProjectImages.Select(Normalise), StringComparer.OrdinalIgnoreCase);
-        if (present.Count == 0) return;
 
-        foreach (var entity in input.Entities)
+        var references = input.Entities.Select(entity => ($"{Kind(entity.TypeKey)} \"{entity.Name}\"", entity.ImagePaths))
+            .Concat(input.Scenes.Select(scene => ($"Scene \"{scene.Title}\"", scene.ImagePaths)))
+            .Concat(input.Maps.Select(map => ($"Map \"{map.Name}\"", map.ImagePaths)));
+        foreach (var (owner, paths) in references)
         {
-            foreach (var path in entity.ImagePaths.Where(p => !string.IsNullOrWhiteSpace(p)))
+            foreach (var path in paths.Where(IsProjectImage))
             {
                 if (present.Contains(Normalise(path))) continue;
                 findings.Add(new HealthFinding(
                     Severity.Problem, "Missing image",
-                    $"{Kind(entity.TypeKey)} \"{entity.Name}\" points at \"{path}\", which is not in the project."));
+                    $"{owner} points at \"{path}\", which is not in the project."));
             }
         }
     }
@@ -206,7 +214,16 @@ public static class ProjectHealth
     /// missing and unused at the same time.
     /// </summary>
     private static string Normalise(string path)
-        => path.Replace('\\', '/').TrimStart('/').Trim();
+    {
+        var decoded = System.Net.WebUtility.HtmlDecode(path).Trim();
+        if (Uri.TryCreate(decoded, UriKind.Absolute, out var uri) && uri.Scheme == "novalist-project")
+            decoded = Uri.UnescapeDataString(uri.AbsolutePath);
+        return decoded.Replace('\\', '/').TrimStart('/');
+    }
+
+    private static bool IsProjectImage(string path)
+        => !string.IsNullOrWhiteSpace(path) && (!Uri.TryCreate(path, UriKind.Absolute, out var uri)
+            || uri.Scheme == "novalist-project");
 
     private static string Kind(string typeKey) => typeKey.ToLowerInvariant() switch
     {

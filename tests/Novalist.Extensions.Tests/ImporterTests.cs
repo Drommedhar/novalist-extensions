@@ -287,6 +287,7 @@ public class ImporterTests : IDisposable
             <?xml version="1.0" encoding="UTF-8"?>
             <ScrivenerProject>
               <Binder>
+                <BinderItem Type="DraftFolder"><Title>Manuscript</Title><Children>
                 <BinderItem UUID="F1" Type="Folder">
                   <Title>Chapter One</Title>
                   <Children>
@@ -294,6 +295,7 @@ public class ImporterTests : IDisposable
                     <BinderItem UUID="S2" Type="Text"><Title>After</Title></BinderItem>
                   </Children>
                 </BinderItem>
+                </Children></BinderItem>
                 <BinderItem UUID="F2" Type="Folder">
                   <Title>Research</Title>
                   <Children>
@@ -325,7 +327,7 @@ public class ImporterTests : IDisposable
         Write("Novel.scriv/Novel.scrivx",
             """
             <ScrivenerProject><Binder>
-              <BinderItem UUID="F1" Type="Folder"><Title>One</Title><Children>
+              <BinderItem UUID="F1" Type="DraftFolder"><Title>One</Title><Children>
                 <BinderItem UUID="MISSING" Type="Text"><Title>Ghost</Title></BinderItem>
               </Children></BinderItem>
             </Binder></ScrivenerProject>
@@ -344,7 +346,7 @@ public class ImporterTests : IDisposable
         Write("Novel.scriv/Novel.scrivx",
             """
             <ScrivenerProject><Binder>
-              <BinderItem UUID="F1" Type="Folder"><Title>Nothing here</Title></BinderItem>
+              <BinderItem UUID="F1" Type="DraftFolder"><Title>Nothing here</Title></BinderItem>
             </Binder></ScrivenerProject>
             """);
 
@@ -369,7 +371,7 @@ public class ImporterTests : IDisposable
         var scrivx = Write("Novel.scriv/Novel.scrivx",
             """
             <ScrivenerProject><Binder>
-              <BinderItem UUID="F1" Type="Folder"><Title>One</Title><Children>
+              <BinderItem UUID="F1" Type="DraftFolder"><Title>One</Title><Children>
                 <BinderItem UUID="S1" Type="Text"><Title>A</Title></BinderItem>
               </Children></BinderItem>
             </Binder></ScrivenerProject>

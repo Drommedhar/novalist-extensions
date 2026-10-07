@@ -3,6 +3,9 @@
 Reports over the whole manuscript, computed from what you have written and
 nothing else. No network, no model, no account.
 
+This updated build requires Novalist 3.5.4 or later, the next desktop release
+with complete entity-content and image projections. Hosts through 3.5.3 need an older extension release.
+
 Everything here is deterministic: the same book produces the same report, and
 every number can be traced back to the scenes it came from.
 
@@ -18,6 +21,9 @@ that quietly gains a definite article.
 
 **Continuity worklist** — what to re-read after a Codex entry changes, built
 from where that entry actually appears rather than from a search.
+Reviews apply to the revision you read. Later changes reopen affected scenes,
+and newly added Codex entries join the baseline automatically. Descriptions and
+sections are tracked for every built-in and custom type.
 
 **Word frequency** — a concordance over the book, with the common words
 excluded, so the words you overuse are visible without reading for them.
@@ -33,5 +39,5 @@ appearances, with the chapters they miss named rather than numbered.
 
 ## Where it lives
 
-Its own view in the main area, one tab per report. Nothing is written back to
-the project; the reports are read-only.
+Its own view in the main area, one tab per report. The continuity worklist stores
+its baseline and review marks in the project's extension data.

@@ -2,6 +2,9 @@
 
 More ways for a manuscript to get in and out of Novalist.
 
+This updated build requires Novalist 3.5.4 or later, the next desktop release
+with the export visibility contract. Hosts through 3.5.3 need an older extension release.
+
 Novalist ships eight export formats and reads seven kinds of manuscript file.
 This adds the ones that are useful to fewer people and would not earn their
 place in the installer: screenplay and ebook interchange on the way out, other
@@ -22,10 +25,10 @@ writing tools on the way in.
 
 | Source | What comes across |
 | --- | --- |
-| Scrivener | Handled by Novalist itself; this adds the older layouts and edge cases. |
+| Scrivener | Manuscript-root prose and nested chapter folders; research and trash stay out. |
 | Ulysses | Sheets and groups as scenes and chapters. |
-| Markdown folder | A directory of `.md` files, one per scene, in name order. |
-| Delimited files | CSV or TSV where a column names the chapter and a column holds the prose. |
+| Markdown folder | Nested directories of `.md` files, one per scene, in name order. |
+| Delimited files | CSV or TSV with quoted multiline prose preserved in one scene. Malformed quoting is reported before any scenes are imported. |
 
 ## Checking an EPUB
 

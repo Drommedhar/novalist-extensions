@@ -15,6 +15,18 @@ namespace Novalist.Extensions.Formats.Importers;
 /// </summary>
 public static class RtfReader
 {
+    private readonly record struct Format(int CodePage, int FallbackLength);
+
+    private sealed class ReaderState
+    {
+        public StringBuilder Output { get; } = new();
+        public int SkipDepth { get; set; } = -1;
+        public int Depth { get; set; }
+        public Format Format { get; set; } = new(1252, 1);
+        public int Fallback { get; set; }
+    }
+
+    static RtfReader() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
     /// <summary>Groups whose contents are metadata rather than prose.</summary>
     private static readonly string[] SkippedDestinations =
         ["fonttbl", "colortbl", "stylesheet", "info", "pict", "object", "themedata",
@@ -24,10 +36,9 @@ public static class RtfReader
     {
         if (string.IsNullOrEmpty(rtf)) return string.Empty;
 
-        var output = new StringBuilder();
-        var skipDepth = -1;
-        var depth = 0;
+        var state = new ReaderState();
         var i = 0;
+        var formats = new Stack<Format>();
 
         while (i < rtf.Length)
         {
@@ -35,30 +46,36 @@ public static class RtfReader
 
             if (c == '{')
             {
-                depth++;
+                formats.Push(state.Format);
+                state.Depth++;
                 i++;
                 continue;
             }
 
             if (c == '}')
             {
-                if (skipDepth >= 0 && depth <= skipDepth) skipDepth = -1;
-                depth--;
+                if (formats.Count > 0) state.Format = formats.Pop();
+                if (state.SkipDepth >= 0 && state.Depth <= state.SkipDepth) state.SkipDepth = -1;
+                state.Depth--;
                 i++;
                 continue;
             }
 
             if (c == '\\')
             {
-                i = ReadControl(rtf, i, output, ref skipDepth, depth);
+                i = ReadControl(rtf, i, state);
                 continue;
             }
 
-            if (skipDepth < 0 && c != '\r' && c != '\n') output.Append(c);
+            if (c != '\r' && c != '\n')
+            {
+                if (state.Fallback > 0) state.Fallback--;
+                else if (state.SkipDepth < 0) state.Output.Append(c);
+            }
             i++;
         }
 
-        return Tidy(output.ToString());
+        return Tidy(state.Output.ToString());
     }
 
     /// <summary>
@@ -66,53 +83,14 @@ public static class RtfReader
     /// whatever text it stands for, and returns the index just past it.
     /// </summary>
     private static int ReadControl(
-        string rtf, int at, StringBuilder output, ref int skipDepth, int depth)
+        string rtf, int at, ReaderState state)
     {
         var i = at + 1;
         if (i >= rtf.Length) return i;
 
         var c = rtf[i];
 
-        // A literal character: \\ \{ \} and friends.
-        if (!char.IsLetter(c))
-        {
-            switch (c)
-            {
-                case '\\' or '{' or '}':
-                    if (skipDepth < 0) output.Append(c);
-                    return i + 1;
-                case '\'':
-                {
-                    // \'xx is a byte in the document's codepage. Read it as
-                    // Latin-1, which is right for the western European text this
-                    // is overwhelmingly used for and wrong quietly rather than
-                    // loudly for anything else.
-                    if (i + 2 < rtf.Length
-                        && byte.TryParse(rtf.AsSpan(i + 1, 2), System.Globalization.NumberStyles.HexNumber,
-                            null, out var b))
-                    {
-                        if (skipDepth < 0) output.Append((char)b);
-                        return i + 3;
-                    }
-                    return i + 1;
-                }
-                case '*':
-                    // \* marks a destination a reader is allowed not to understand,
-                    // which is exactly the ones whose contents are not prose.
-                    skipDepth = skipDepth < 0 ? depth : skipDepth;
-                    return i + 1;
-                case '~':
-                    if (skipDepth < 0) output.Append(' ');
-                    return i + 1;
-                case '-':
-                    return i + 1;
-                case '\r' or '\n':
-                    if (skipDepth < 0) output.Append('\n');
-                    return i + 1;
-                default:
-                    return i + 1;
-            }
-        }
+        if (!char.IsLetter(c)) return ReadSymbol(rtf, at, state);
 
         // A control word, optionally with a numeric parameter.
         var start = i;
@@ -132,49 +110,102 @@ public static class RtfReader
 
         if (SkippedDestinations.Contains(word, StringComparer.Ordinal))
         {
-            skipDepth = skipDepth < 0 ? depth : skipDepth;
+            state.SkipDepth = state.SkipDepth < 0 ? state.Depth : state.SkipDepth;
             return i;
         }
 
-        if (skipDepth >= 0) return i;
+        if (state.SkipDepth >= 0) return i;
 
         switch (word)
         {
+            case "ansicpg" when hasParameter:
+                _ = Encoding.GetEncoding(parameter);
+                state.Format = state.Format with { CodePage = parameter };
+                break;
+            case "uc" when hasParameter && parameter >= 0:
+                state.Format = state.Format with { FallbackLength = parameter };
+                break;
             case "par" or "line" or "sect":
-                output.Append('\n');
+                state.Output.Append('\n');
                 break;
             case "tab":
-                output.Append('\t');
+                state.Output.Append('\t');
                 break;
             case "emdash":
-                output.Append('—');
+                state.Output.Append('—');
                 break;
             case "endash":
-                output.Append('–');
+                state.Output.Append('–');
                 break;
             case "lquote":
-                output.Append('‘');
+                state.Output.Append('‘');
                 break;
             case "rquote":
-                output.Append('’');
+                state.Output.Append('’');
                 break;
             case "ldblquote":
-                output.Append('“');
+                state.Output.Append('“');
                 break;
             case "rdblquote":
-                output.Append('”');
+                state.Output.Append('”');
                 break;
             case "u" when hasParameter:
             {
-                // \uN with a fallback character after it that has to be dropped,
-                // or every non-ASCII character arrives doubled.
-                output.Append((char)(parameter < 0 ? parameter + 65536 : parameter));
-                if (i < rtf.Length && rtf[i] == '?') i++;
+                // \uN includes an ANSI fallback that must not be appended twice.
+                state.Output.Append((char)(parameter < 0 ? parameter + 65536 : parameter));
+                state.Fallback = state.Format.FallbackLength;
                 break;
             }
         }
 
         return i;
+    }
+
+    private static int ReadSymbol(string rtf, int at, ReaderState state)
+    {
+        var i = at + 1;
+        var c = rtf[i];
+        if (state.Fallback > 0 && c != '*')
+        {
+            state.Fallback--;
+            return c == '\'' ? Math.Min(rtf.Length, i + 3) : i + 1;
+        }
+        switch (c)
+        {
+            case '\\' or '{' or '}':
+                if (state.SkipDepth < 0) state.Output.Append(c);
+                return i + 1;
+            case '\'':
+            {
+                var bytes = new List<byte>();
+                var next = at;
+                while (next + 3 < rtf.Length && rtf[next] == '\\' && rtf[next + 1] == '\''
+                    && byte.TryParse(rtf.AsSpan(next + 2, 2), System.Globalization.NumberStyles.HexNumber,
+                        null, out var value))
+                {
+                    bytes.Add(value);
+                    next += 4;
+                }
+                if (bytes.Count == 0) return i + 1;
+                if (state.SkipDepth < 0) state.Output.Append(Encoding.GetEncoding(state.Format.CodePage).GetString(bytes.ToArray()));
+                return next;
+            }
+            case '*':
+                // \* marks a destination a reader is allowed not to understand,
+                // which is exactly the ones whose contents are not prose.
+                state.SkipDepth = state.SkipDepth < 0 ? state.Depth : state.SkipDepth;
+                return i + 1;
+            case '~':
+                if (state.SkipDepth < 0) state.Output.Append(' ');
+                return i + 1;
+            case '-':
+                return i + 1;
+            case '\r' or '\n':
+                if (state.SkipDepth < 0) state.Output.Append('\n');
+                return i + 1;
+            default:
+                return i + 1;
+        }
     }
 
     /// <summary>

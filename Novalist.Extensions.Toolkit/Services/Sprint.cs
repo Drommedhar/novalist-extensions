@@ -14,10 +14,8 @@ public enum SprintPhase
     Resting
 }
 
-/// <summary>One finished sprint, kept so the numbers mean something over time.</summary>
 public sealed record SprintRecord(string StartedAt, int Minutes, int Words);
 
-/// <summary>The state a sprint panel needs to draw itself.</summary>
 public sealed record SprintSnapshot(
     SprintPhase Phase,
     int SecondsLeft,
@@ -45,6 +43,7 @@ public sealed class Sprint
     private int _wordsNow;
     private DateTimeOffset _phaseEnds;
     private DateTimeOffset _startedAt;
+    private string _scope = string.Empty;
 
     public SprintPhase Phase { get; private set; } = SprintPhase.Idle;
     public int WritingMinutes { get; set; } = 25;
@@ -57,14 +56,27 @@ public sealed class Sprint
     /// Starts writing. <paramref name="words"/> is the project's word count now,
     /// which is the baseline everything is measured against.
     /// </summary>
-    public void Start(int words, DateTimeOffset now)
+    public void Start(int words, DateTimeOffset now, string scope = "")
     {
         _wordsAtStart = words;
         _wordsNow = words;
+        _scope = scope;
         _startedAt = now;
         _phaseEnds = now.AddMinutes(Math.Max(1, WritingMinutes));
         Phase = SprintPhase.Writing;
     }
+
+    public bool StopIfScopeChanged(string scope, DateTimeOffset now)
+    {
+        if (Phase == SprintPhase.Idle || _scope == scope) return false;
+        Stop(now);
+        return true;
+    }
+
+    internal static string Scope(Novalist.Sdk.Services.IExtensionProjectService project)
+        => project.IsProjectLoaded
+            ? string.Join('\0', project.ProjectRoot, project.ActiveBookId, project.ActiveDraftId)
+            : string.Empty;
 
     /// <summary>
     /// Stops, recording what was written in the time it actually ran.

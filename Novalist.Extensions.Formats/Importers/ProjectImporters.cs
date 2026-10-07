@@ -57,15 +57,15 @@ public static partial class ProjectImporters
         var chapters = 0;
         var scenes = 0;
 
-        foreach (var item in document.Descendants("BinderItem")
-                     .Where(i => (string?)i.Attribute("Type") == "Folder"))
+        var manuscript = document.Descendants("BinderItem")
+            .FirstOrDefault(i => (string?)i.Attribute("Type") == "DraftFolder");
+        if (manuscript == null)
+            return ImportReport.Nothing("The binder has no manuscript root (DraftFolder).");
+
+        foreach (var item in manuscript.DescendantsAndSelf("BinderItem")
+                     .Where(i => (string?)i.Attribute("Type") is "Folder" or "DraftFolder"))
         {
             var title = (string?)item.Element("Title") ?? "Untitled";
-            // Scrivener's own Research and Trash folders are not manuscript, and
-            // importing them as chapters is the commonest way one of these tools
-            // makes a mess of somebody's binder.
-            if (IsNotManuscript(title)) continue;
-
             var children = item.Element("Children")?.Elements("BinderItem")
                 .Where(c => (string?)c.Attribute("Type") == "Text").ToList() ?? [];
             if (children.Count == 0) continue;
@@ -85,8 +85,10 @@ public static partial class ProjectImporters
                     skipped.Add($"{title} / {sceneTitle}: no text file found.");
                     continue;
                 }
-                await host.ProjectService.WriteSceneContentAsync(
-                    chapterGuid, sceneId, ToHtml(RtfReader.ToText(await File.ReadAllTextAsync(rtf))));
+                var content = await File.ReadAllTextAsync(rtf);
+                var plainText = Path.GetExtension(rtf).Equals(".rtf", StringComparison.OrdinalIgnoreCase)
+                    ? RtfReader.ToText(content) : content;
+                await host.ProjectService.WriteSceneContentAsync(chapterGuid, sceneId, ToHtml(plainText));
             }
         }
 
@@ -114,10 +116,11 @@ public static partial class ProjectImporters
         var topLevel = TextFilesIn(path);
         if (topLevel.Count > 0)
             groups.Add((Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar)), topLevel));
-        foreach (var directory in Directory.GetDirectories(path).OrderBy(d => d, StringComparer.Ordinal))
+        var traversal = new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint };
+        foreach (var directory in Directory.EnumerateDirectories(path, "*", traversal).OrderBy(d => d, StringComparer.Ordinal))
         {
             var files = TextFilesIn(directory);
-            if (files.Count > 0) groups.Add((Path.GetFileName(directory), files));
+            if (files.Count > 0) groups.Add((Path.GetRelativePath(path, directory).Replace('\\', '/'), files));
         }
 
         if (groups.Count == 0)
@@ -155,11 +158,16 @@ public static partial class ProjectImporters
     {
         if (!File.Exists(path)) return ImportReport.Nothing("That file does not exist.");
 
-        var lines = await File.ReadAllLinesAsync(path);
-        if (lines.Length < 2) return ImportReport.Nothing("The file has no rows under its header.");
+        List<string> lines;
+        try { lines = DelimitedRecords(await File.ReadAllTextAsync(path)); }
+        catch (FormatException exception) { return ImportReport.Nothing(exception.Message); }
+        if (lines.Count < 2) return ImportReport.Nothing("The file has no rows under its header.");
 
         var separator = lines[0].Contains('\t') ? '\t' : ',';
-        var header = SplitRow(lines[0], separator)
+        List<List<string>> records;
+        try { records = lines.Select(line => SplitRow(line, separator)).ToList(); }
+        catch (FormatException exception) { return ImportReport.Nothing(exception.Message); }
+        var header = records[0]
             .Select(h => h.Trim().ToLowerInvariant()).ToList();
 
         var chapterAt = IndexOfAny(header, "chapter", "act", "part");
@@ -172,10 +180,10 @@ public static partial class ProjectImporters
         var chapters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var scenes = 0;
 
-        for (var row = 1; row < lines.Length; row++)
+        for (var row = 1; row < lines.Count; row++)
         {
             if (string.IsNullOrWhiteSpace(lines[row])) continue;
-            var cells = SplitRow(lines[row], separator);
+            var cells = records[row];
             if (cells.Count <= textAt)
             {
                 skipped.Add($"Row {row + 1}: fewer columns than the header.");
@@ -204,12 +212,36 @@ public static partial class ProjectImporters
 
     // ── Shared reading ──
 
-    private static bool IsNotManuscript(string title) =>
-        title.Equals("Research", StringComparison.OrdinalIgnoreCase)
-        || title.Equals("Trash", StringComparison.OrdinalIgnoreCase)
-        || title.Equals("Templates", StringComparison.OrdinalIgnoreCase)
-        || title.Equals("Template Sheets", StringComparison.OrdinalIgnoreCase)
-        || title.Equals("Front Matter", StringComparison.OrdinalIgnoreCase);
+    private static List<string> DelimitedRecords(string text)
+    {
+        var rows = new List<string>();
+        var row = new StringBuilder();
+        var quoted = false;
+        for (var index = 0; index < text.Length; index++)
+        {
+            var character = text[index];
+            if (character == '"')
+            {
+                if (quoted && index + 1 < text.Length && text[index + 1] == '"')
+                {
+                    row.Append("\"\"");
+                    index++;
+                    continue;
+                }
+                quoted = !quoted;
+            }
+            if (!quoted && character is ('\r' or '\n'))
+            {
+                rows.Add(row.ToString());
+                row.Clear();
+                if (character == '\r' && index + 1 < text.Length && text[index + 1] == '\n') index++;
+            }
+            else row.Append(character);
+        }
+        if (quoted) throw new FormatException("An imported text cell has an unclosed quote. No scenes were imported.");
+        if (row.Length > 0) rows.Add(row.ToString());
+        return rows;
+    }
 
     private static (string? Scrivx, string? Root) ResolveScrivener(string path)
     {
@@ -267,6 +299,7 @@ public static partial class ProjectImporters
         var cells = new List<string>();
         var cell = new StringBuilder();
         var quoted = false;
+        var closedQuote = false;
 
         for (var i = 0; i < line.Length; i++)
         {
@@ -276,12 +309,26 @@ public static partial class ProjectImporters
                 if (c != '"') { cell.Append(c); continue; }
                 if (i + 1 < line.Length && line[i + 1] == '"') { cell.Append('"'); i++; continue; }
                 quoted = false;
+                closedQuote = true;
                 continue;
             }
-            if (c == '"') { quoted = true; continue; }
-            if (c == separator) { cells.Add(cell.ToString()); cell.Clear(); continue; }
+            if (c == separator)
+            {
+                cells.Add(cell.ToString());
+                cell.Clear();
+                closedQuote = false;
+                continue;
+            }
+            if (closedQuote) throw new FormatException("Unexpected text after a closing quote. No scenes were imported.");
+            if (c == '"')
+            {
+                if (cell.Length != 0) throw new FormatException("A quote must start a cell. No scenes were imported.");
+                quoted = true;
+                continue;
+            }
             cell.Append(c);
         }
+        if (quoted) throw new FormatException("An imported text cell has an unclosed quote. No scenes were imported.");
         cells.Add(cell.ToString());
         return cells;
     }

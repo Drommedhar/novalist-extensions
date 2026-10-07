@@ -18,6 +18,8 @@ public sealed class FakeScene
     public string Id { get; init; } = System.Guid.NewGuid().ToString();
     public string Title { get; set; } = string.Empty;
     public string Html { get; set; } = string.Empty;
+    public bool Inactive { get; set; }
+    public bool ExcludeFromExport { get; set; }
 }
 
 /// <summary>
@@ -82,7 +84,9 @@ public sealed class FakeHost : IHostServices, IExtensionProjectService, IExtensi
                 Id = s.Id,
                 Title = s.Title,
                 ChapterGuid = chapter.Guid,
-                ChapterTitle = chapter.Title
+                ChapterTitle = chapter.Title,
+                Inactive = s.Inactive,
+                ExcludeFromExport = s.ExcludeFromExport
             })];
     }
 

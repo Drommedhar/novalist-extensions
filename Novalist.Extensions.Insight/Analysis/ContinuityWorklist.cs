@@ -22,8 +22,10 @@ public sealed class WorklistState
     /// <summary>Entity id to a hash of the entry as it was when last reviewed.</summary>
     public Dictionary<string, string> EntityHashes { get; set; } = new(StringComparer.Ordinal);
 
-    /// <summary>Scene ids the writer has ticked off, by "sceneId|entityId".</summary>
+    /// <summary>Legacy marks retained for reading old state; reviews now require a fingerprint.</summary>
     public HashSet<string> Reviewed { get; set; } = new(StringComparer.Ordinal);
+
+    public Dictionary<string, string> ReviewedFingerprints { get; set; } = new(StringComparer.Ordinal);
 }
 
 /// <summary>
@@ -79,11 +81,16 @@ public static class ContinuityWorklist
         var changed = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var (id, name, fingerprint) in entities)
         {
-            if (!state.EntityHashes.TryGetValue(id, out var previous)) continue;
+            if (!state.EntityHashes.TryGetValue(id, out var previous))
+            {
+                state.EntityHashes[id] = fingerprint;
+                continue;
+            }
             if (previous == fingerprint) continue;
             changed[id] = name;
         }
         if (changed.Count == 0) return [];
+        var fingerprints = entities.ToDictionary(entity => entity.Id, entity => entity.Fingerprint, StringComparer.Ordinal);
 
         var items = new List<WorklistItem>();
         foreach (var scene in scenes)
@@ -96,7 +103,8 @@ public static class ContinuityWorklist
 
             // Reviewed per scene and per entry: ticking off a scene for one
             // change must not silence it for the next one.
-            var reviewed = touched.All(id => state.Reviewed.Contains(Key(scene.SceneId, id)));
+            var reviewed = touched.All(id => state.ReviewedFingerprints.TryGetValue(Key(scene.SceneId, id), out var read)
+                && fingerprints[id] == read);
             items.Add(new WorklistItem(
                 scene.ChapterGuid, scene.SceneId, scene.ChapterTitle, scene.SceneTitle,
                 [.. touched.Select(id => changed[id]).OrderBy(n => n, StringComparer.Ordinal)],
@@ -108,9 +116,10 @@ public static class ContinuityWorklist
 
     /// <summary>Marks a scene read against every entry currently flagged on it.</summary>
     public static void MarkReviewed(
-        WorklistState state, string sceneId, IEnumerable<string> entityIds)
+        WorklistState state, string sceneId, IEnumerable<(string Id, string Fingerprint)> entities)
     {
-        foreach (var id in entityIds) state.Reviewed.Add(Key(sceneId, id));
+        foreach (var (id, fingerprint) in entities)
+            state.ReviewedFingerprints[Key(sceneId, id)] = fingerprint;
     }
 
     /// <summary>
@@ -122,6 +131,7 @@ public static class ContinuityWorklist
     {
         state.EntityHashes = entities.ToDictionary(e => e.Id, e => e.Fingerprint, StringComparer.Ordinal);
         state.Reviewed.Clear();
+        state.ReviewedFingerprints.Clear();
     }
 
     private static string Key(string sceneId, string entityId) => $"{sceneId}|{entityId}";

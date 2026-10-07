@@ -2,11 +2,14 @@
 
 The small tools that do not belong in the app itself, in one view.
 
+This updated build requires Novalist 3.5.4 or later, the next desktop release
+that displays dictionary definitions as information. Hosts through 3.5.3 need an older extension release.
+
 ## Sprints
 
-A timer with a word target, a rest interval and a history. It counts what you
-actually wrote during the sprint rather than the difference between two totals,
-so a session spent cutting still records the words you put down.
+A timer with a rest interval and history. It records the net word-count gain
+during the sprint. Switching project, book or draft ends the sprint before the
+new manuscript's total can affect its result.
 
 ## The board
 

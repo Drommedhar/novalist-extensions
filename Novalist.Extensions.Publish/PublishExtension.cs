@@ -252,16 +252,7 @@ public sealed class PublishExtension : IExtension, IWizardContributor
             progress.SetStatus(_loc.T("publish.writingPages"));
 
             var files = SiteGenerator.Generate(content, options);
-            Directory.CreateDirectory(outputPath);
-            foreach (var file in files)
-            {
-                progress.CancellationToken.ThrowIfCancellationRequested();
-                await File.WriteAllTextAsync(
-                    Path.Combine(outputPath, file.RelativePath),
-                    file.Content,
-                    new UTF8Encoding(false),
-                    progress.CancellationToken);
-            }
+            await SitePublisher.WriteAsync(outputPath, files, progress.CancellationToken);
 
             progress.Dispose();
             // The path, not just a count: a writer who has just generated a site
@@ -272,8 +263,6 @@ public sealed class PublishExtension : IExtension, IWizardContributor
         }
         catch (OperationCanceledException)
         {
-            // A cancelled publish leaves the pages it already wrote. Deleting a
-            // folder the writer chose is not something to do on their behalf.
             _host.ShowNotification(_loc.T("publish.cancelled"));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -318,34 +307,7 @@ public sealed class PublishExtension : IExtension, IWizardContributor
         var chapters = new List<SiteChapter>();
 
         if (scope != SiteScope.Manuscript)
-        {
-            foreach (var character in await _host.EntityService.LoadCharactersAsync())
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var detailed = await _host.EntityService.GetCharacterDetailedAsync(
-                    character.Id, null, null);
-                entries.Add(new SiteEntry(
-                    character.Id, "character", character.DisplayName,
-                    [.. (detailed?.Sections ?? []).Select(s => (s.Title, s.Content))],
-                    character.Aliases));
-            }
-            foreach (var location in await _host.EntityService.LoadLocationsAsync())
-                entries.Add(new SiteEntry(location.Id, "location", location.Name, [], []));
-            foreach (var item in await _host.EntityService.LoadItemsAsync())
-                entries.Add(new SiteEntry(item.Id, "item", item.Name, [], []));
-            foreach (var lore in await _host.EntityService.LoadLoreAsync())
-                entries.Add(new SiteEntry(lore.Id, "lore", lore.Name, [], []));
-
-            foreach (var type in _host.EntityService.GetCustomEntityTypes())
-            {
-                foreach (var custom in await _host.EntityService.LoadCustomEntitiesAsync(type.TypeKey))
-                {
-                    entries.Add(new SiteEntry(
-                        custom.Id, type.TypeKey, custom.Name,
-                        [.. (custom.Sections ?? []).Select(s => (s.Title, s.Content))], []));
-                }
-            }
-        }
+            entries = await ReadEntriesAsync(cancellationToken);
 
         if (scope != SiteScope.World)
         {
@@ -355,6 +317,7 @@ public sealed class PublishExtension : IExtension, IWizardContributor
                 var scenes = new List<SiteScene>();
                 foreach (var scene in _host.ProjectService.GetScenesForChapter(chapter.Guid))
                 {
+                    if (scene.Inactive || scene.ExcludeFromExport) continue;
                     var html = await _host.ProjectService.ReadSceneContentAsync(
                         chapter.Guid, scene.Id);
                     scenes.Add(new SiteScene(scene.Title, Paragraphs(html)));
@@ -369,6 +332,30 @@ public sealed class PublishExtension : IExtension, IWizardContributor
         }
 
         return new SiteContent(entries, chapters);
+    }
+
+    private async Task<List<SiteEntry>> ReadEntriesAsync(CancellationToken cancellationToken)
+    {
+        var service = _host.EntityService;
+        var ids = new List<(string Type, string Id)>();
+        ids.AddRange((await service.LoadCharactersAsync()).Select(e => ("character", e.Id)));
+        ids.AddRange((await service.LoadLocationsAsync()).Select(e => ("location", e.Id)));
+        ids.AddRange((await service.LoadItemsAsync()).Select(e => ("item", e.Id)));
+        ids.AddRange((await service.LoadLoreAsync()).Select(e => ("lore", e.Id)));
+        foreach (var type in service.GetCustomEntityTypes())
+            ids.AddRange((await service.LoadCustomEntitiesAsync(type.TypeKey)).Select(e => (type.TypeKey, e.Id)));
+
+        var entries = new List<SiteEntry>();
+        foreach (var (type, id) in ids)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var content = await service.GetEntityContentAsync(type, id);
+            if (content == null || content.ReaderHidden) continue;
+            var sections = content.Sections.Where(s => !s.ReaderHidden).Select(s => (s.Title, s.Content)).ToList();
+            if (!string.IsNullOrWhiteSpace(content.Description)) sections.Insert(0, (string.Empty, content.Description));
+            entries.Add(new SiteEntry(content.Id, type, content.Name, sections, content.Aliases));
+        }
+        return entries;
     }
 
     private static IReadOnlyList<string> Paragraphs(string html)
