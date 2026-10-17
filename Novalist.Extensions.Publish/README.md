@@ -3,8 +3,8 @@
 Turns a project into a self-contained static website: a folder of HTML, CSS and
 images that opens from disk and uploads anywhere.
 
-This updated build requires Novalist 3.5.4 or later, the next desktop release
-with scene and Codex reader-visibility contracts. Hosts through 3.5.3 need an older extension release.
+This build requires Novalist 3.6.0 or later and uses SDK 15 / .NET 10.
+Earlier hosts need an older compatible extension release.
 
 ## What it builds
 

@@ -5,6 +5,9 @@ Local character and narrator speech for Novalist, built on
 from a text brief, keeps that identity, and reads the book without sending the
 manuscript to a service.
 
+This build requires Novalist 3.6.0 or later and uses SDK 15 / .NET 10.
+Earlier hosts need an older compatible extension release.
+
 ## Why Qwen3-TTS
 
 Novalist needs two abilities at the same time: free-form voice design and a

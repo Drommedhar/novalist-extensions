@@ -6,7 +6,7 @@ on:
   pull_request:
 
 env:
-  DOTNET_VERSION: 8.0.x
+  DOTNET_VERSION: 10.0.x
 
 jobs:
   build:
@@ -19,12 +19,12 @@ jobs:
         with:
           path: novalist-extension
 
-      # Includes the host contracts required before the v3.5.4 release.
+      # SDK 15 and .NET 10 ship with Novalist 3.6.0.
       - name: Check out the SDK
         uses: actions/checkout@v4
         with:
           repository: Drommedhar/novalist-official
-          ref: 9feaf6f9624ffd22aba765b71327f41f3376b2e1
+          ref: v3.6.0
           path: novalist-official
 
       - name: Setup .NET

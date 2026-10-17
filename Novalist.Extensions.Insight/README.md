@@ -3,8 +3,8 @@
 Reports over the whole manuscript, computed from what you have written and
 nothing else. No network, no model, no account.
 
-This updated build requires Novalist 3.5.4 or later, the next desktop release
-with complete entity-content and image projections. Hosts through 3.5.3 need an older extension release.
+This build requires Novalist 3.6.0 or later and uses SDK 15 / .NET 10.
+Earlier hosts need an older compatible extension release.
 
 Everything here is deterministic: the same book produces the same report, and
 every number can be traced back to the scenes it came from.

@@ -2,8 +2,8 @@
 
 More ways for a manuscript to get in and out of Novalist.
 
-This updated build requires Novalist 3.5.4 or later, the next desktop release
-with the export visibility contract. Hosts through 3.5.3 need an older extension release.
+This build requires Novalist 3.6.0 or later and uses SDK 15 / .NET 10.
+Earlier hosts need an older compatible extension release.
 
 Novalist ships eight export formats and reads seven kinds of manuscript file.
 This adds the ones that are useful to fewer people and would not earn their

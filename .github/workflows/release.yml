@@ -12,7 +12,7 @@ on:
       - "*-v*"
 
 env:
-  DOTNET_VERSION: 8.0.x
+  DOTNET_VERSION: 10.0.x
   CONFIGURATION: Release
 
 jobs:
@@ -36,7 +36,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Drommedhar/novalist-official
-          ref: v3.5.4
+          ref: v3.6.0
           path: novalist-official
 
       - name: Setup .NET
@@ -106,7 +106,7 @@ jobs:
       - name: Package
         working-directory: novalist-extension
         run: |
-          cd "${{ steps.which.outputs.project }}/bin/${{ env.CONFIGURATION }}/net8.0"
+          cd "${{ steps.which.outputs.project }}/bin/${{ env.CONFIGURATION }}/net10.0"
           ZIP="${GITHUB_WORKSPACE}/${{ steps.which.outputs.id }}.zip"
 
           # Only the extension's own payload. The SDK assembly is supplied by the

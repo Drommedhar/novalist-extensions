@@ -2,8 +2,8 @@
 
 The small tools that do not belong in the app itself, in one view.
 
-This updated build requires Novalist 3.5.4 or later, the next desktop release
-that displays dictionary definitions as information. Hosts through 3.5.3 need an older extension release.
+This build requires Novalist 3.6.0 or later and uses SDK 15 / .NET 10.
+Earlier hosts need an older compatible extension release.
 
 ## Sprints
 

@@ -48,17 +48,13 @@ EPUB check has no business bumping the version of the writing timer.
 
 ## The SDK these need
 
-Formats, Insight, Publish and Toolkit require Novalist **3.5.4 or later**.
-These fixes use host contracts for scene export visibility, complete Codex
-content and images, and informational inline-action results. Versions through
-3.5.3 do not provide these contracts and must use an older extension release.
-Speech retains its existing 3.3.0 minimum.
+All five extensions require Novalist **3.6.0 or later** and build with the
+.NET 10 SDK against Novalist SDK **15.0.0**. Earlier hosts can continue using
+older compatible extension releases.
 
 Development builds use the updated SDK source in the adjacent
-`novalist-official` checkout. CI pins the compatible SDK source at
-[`9feaf6f9`](https://github.com/Drommedhar/novalist-official/commit/9feaf6f9624ffd22aba765b71327f41f3376b2e1);
-update that pin when adopting further SDK changes.
-Release builds explicitly use its **v3.5.4 tag**, so the matching updated host
+`novalist-official` checkout. CI and release builds use its **v3.6.0 tag**,
+so the matching updated host
 must be released before these extension releases can build. If the next host
 release uses a different version, update the release ref and manifest minimums
 together before tagging extensions. The SDK package version is managed by the
