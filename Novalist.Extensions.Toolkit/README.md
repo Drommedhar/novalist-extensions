@@ -19,11 +19,21 @@ the scene at the comment.
 
 ## Dictionary and thesaurus
 
-Look a word up without leaving the manuscript. Definitions and synonyms for the
-word under the caret.
+Open a scene in the scene editor, select one word, then right-click and choose
+**Look up → Define** or **Look up → Synonyms**. From Manuscript view, click the
+scene's title to open the scene editor; Manuscript view does not have this menu.
 
-This is the one part of the extension that reaches the network, and only when
-you ask it to.
+Definitions leave your prose unchanged. Synonyms are offered as suggested edits
+for you to review. German and English lookups use the project's writing language
+(**Settings → Writing → Quote Style**), independently of the interface language.
+Definitions and synonyms come directly from [Wiktionary](https://www.wiktionary.org/)
+and show a link to their source entry and its attribution/license information.
+An internet connection is required; no API key is needed. German nouns retain
+their capitalization, so **Prolog** is looked up as a German word in a German project.
+
+While a lookup runs, the editor shows its name and a progress bar with a
+**Cancel** button. If the dictionary does not respond within 15 seconds, the
+result explains that the lookup timed out; check your connection and try again.
 
 ## Names
 

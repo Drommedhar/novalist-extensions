@@ -2,6 +2,9 @@
   "toolkit": {
     "allDone": "Nichts offen. Alles abgehakt.",
     "cancelled": "Abgebrochen.",
+    "lookupTimedOut": "Das Wörterbuch hat nicht rechtzeitig geantwortet. Prüfe deine Verbindung und versuche es erneut.",
+    "unsupportedLookupLanguage": "Das Wörterbuch unterstützt derzeit Deutsch und Englisch. Es verwendet die unter Einstellungen → Schreiben → Anführungszeichen-Stil gewählte Schreibsprache.",
+    "invalidDictionaryResponse": "Das Wörterbuch hat eine unlesbare Antwort zurückgegeben. Bitte versuche es später erneut.",
     "capture": "Seite erfassen",
     "captureFailed": "Seite konnte nicht abgerufen werden: {0}",
     "captureNeedsUrl": "Für die Erfassung wird eine http- oder https-Adresse benötigt.",
