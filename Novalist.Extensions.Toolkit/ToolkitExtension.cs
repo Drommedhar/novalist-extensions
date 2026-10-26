@@ -34,6 +34,11 @@ public sealed class ToolkitExtension :
     private Sprint _sprint = new();
     private Lookup _lookup = null!;
     private IExtensionLocalization _loc = null!;
+    private readonly Func<Lookup> _createLookup;
+
+    public ToolkitExtension() : this(() => new Lookup()) { }
+
+    internal ToolkitExtension(Func<Lookup> createLookup) => _createLookup = createLookup;
 
     private string SprintPath => Path.Combine(
         _host.GetExtensionSettingsPath(Id), "sprints.json");
@@ -42,7 +47,7 @@ public sealed class ToolkitExtension :
     {
         _host = host;
         _loc = host.GetLocalization(Id);
-        _lookup = new Lookup();
+        _lookup = _createLookup();
         _sprint = Sprint.Load(File.Exists(SprintPath) ? File.ReadAllText(SprintPath) : null);
 
         // The sprint has to know the word count as it changes, and a save is the
@@ -50,10 +55,12 @@ public sealed class ToolkitExtension :
         _host.SceneSaved += OnSceneSaved;
 
         RegisterCommands();
+        _host.RegisterInlineActionContributor(this);
     }
 
     public void Shutdown()
     {
+        _host.UnregisterInlineActionContributor(this);
         _host.SceneSaved -= OnSceneSaved;
         SaveSprint();
         _lookup.Dispose();
@@ -157,19 +164,31 @@ public sealed class ToolkitExtension :
         if (word.Contains(' '))
             return new InlineActionResult { Error = _loc.T("toolkit.selectOneWord") };
 
+        var language = _host.WritingLanguage;
+        if (language.Split('-', '_')[0].ToLowerInvariant() is not ("en" or "de"))
+            return new InlineActionResult { Error = _loc.T("toolkit.unsupportedLookupLanguage") };
+
         try
         {
             return actionId switch
             {
-                "toolkit.define" => Definition(await _lookup.DefineAsync(word, cancellationToken)),
+                "toolkit.define" => Definition(await _lookup.DefineAsync(word, language, cancellationToken)),
                 "toolkit.synonyms" => Synonyms(
-                    word, await _lookup.SynonymsAsync(word, cancellationToken)),
+                    word, await _lookup.SynonymsAsync(word, language, cancellationToken)),
                 _ => new InlineActionResult { Error = $"Unknown action \"{actionId}\"." }
             };
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             return new InlineActionResult { Error = _loc.T("toolkit.cancelled") };
+        }
+        catch (OperationCanceledException)
+        {
+            return new InlineActionResult { Error = _loc.T("toolkit.lookupTimedOut") };
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidDataException)
+        {
+            return new InlineActionResult { Error = _loc.T("toolkit.invalidDictionaryResponse") };
         }
         catch (HttpRequestException ex)
         {
@@ -181,30 +200,32 @@ public sealed class ToolkitExtension :
     }
 
     /// <summary>
-    /// A definition goes in as a comment on the passage, not into the prose. The
-    /// writer asked what a word means; they did not ask for the answer to be
-    /// written into their book.
+    /// Definitions are shown with source attribution without changing the prose.
     /// </summary>
-    private InlineActionResult Definition(IReadOnlyList<string> senses)
-        => senses.Count == 0
+    private InlineActionResult Definition(DictionaryLookup lookup)
+        => lookup.Items.Count == 0
             ? new InlineActionResult { Error = _loc.T("toolkit.noDefinition") }
             : new InlineActionResult
             {
-                Text = string.Join("  ", senses.Select((s, i) => $"{i + 1}. {s}")),
-                Disposition = InlineActionDisposition.ShowInformation
+                Text = string.Join("  ", lookup.Items.Select((s, i) => $"{i + 1}. {s}")),
+                Disposition = InlineActionDisposition.ShowInformation,
+                SourceLabel = "Wiktionary · CC BY-SA 4.0",
+                SourceUrl = lookup.SourceUrl
             };
 
-    private InlineActionResult Synonyms(string word, IReadOnlyList<string> synonyms)
-        => synonyms.Count == 0
+    private InlineActionResult Synonyms(string word, DictionaryLookup lookup)
+        => lookup.Items.Count == 0
             ? new InlineActionResult { Error = _loc.T("toolkit.noSynonyms").Replace("{0}", word) }
             : new InlineActionResult
             {
-                Text = synonyms[0],
+                Text = lookup.Items[0],
                 Disposition = InlineActionDisposition.ReplaceSelection,
                 // Every one of them, so the writer picks rather than being given
                 // whichever the dictionary happened to list first.
-                Alternatives = [.. synonyms],
-                AsSuggestion = true
+                Alternatives = lookup.Items,
+                AsSuggestion = true,
+                SourceLabel = "Wiktionary · CC BY-SA 4.0",
+                SourceUrl = lookup.SourceUrl
             };
 
     // ── Commands ──

@@ -19,14 +19,6 @@ jobs:
         with:
           path: novalist-extension
 
-      # SDK 15 and .NET 10 ship with Novalist 3.6.0.
-      - name: Check out the SDK
-        uses: actions/checkout@v4
-        with:
-          repository: Drommedhar/novalist-official
-          ref: v3.6.0
-          path: novalist-official
-
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -34,15 +26,15 @@ jobs:
 
       - name: Restore
         working-directory: novalist-extension
-        run: dotnet restore -p:UseLocalSdk=true
+        run: dotnet restore --force-evaluate --no-http-cache -p:UseLocalSdk=false
 
       - name: Build
         working-directory: novalist-extension
-        run: dotnet build -c Release --no-restore -p:UseLocalSdk=true -p:ExtensionFolder=
+        run: dotnet build -c Release --no-restore -p:UseLocalSdk=false -p:ExtensionFolder=
 
       - name: Test
         working-directory: novalist-extension
-        run: dotnet test -c Release --no-build -p:UseLocalSdk=true -p:ExtensionFolder=
+        run: dotnet test -c Release --no-build -p:UseLocalSdk=false -p:ExtensionFolder=
 
       # The sidecar is Python and so is outside the .NET test run, which is how
       # it came to have no tests at all - and how the language, the reading rate

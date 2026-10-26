@@ -2,6 +2,9 @@
   "toolkit": {
     "allDone": "Nothing open. Everything is ticked off.",
     "cancelled": "Cancelled.",
+    "lookupTimedOut": "The dictionary took too long to respond. Check your connection and try again.",
+    "unsupportedLookupLanguage": "Dictionary lookups currently support German and English. They use the writing language selected in Settings → Writing → Quote Style.",
+    "invalidDictionaryResponse": "The dictionary returned an unreadable response. Please try again later.",
     "capture": "Capture a page",
     "captureFailed": "Could not fetch that page: {0}",
     "captureNeedsUrl": "Capture needs an http or https address.",

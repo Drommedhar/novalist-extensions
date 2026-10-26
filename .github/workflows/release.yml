@@ -28,17 +28,6 @@ jobs:
         with:
           path: novalist-extension
 
-      # Built against the SDK source, not a published package. Everything here
-      # uses SDK surface added for it, and that surface reaches NuGet only when
-      # the host that introduced it ships - so a release built against the
-      # package would fail, and one built against a stale package would be worse.
-      - name: Check out the SDK
-        uses: actions/checkout@v4
-        with:
-          repository: Drommedhar/novalist-official
-          ref: v3.6.0
-          path: novalist-official
-
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -87,21 +76,21 @@ jobs:
 
       - name: Restore
         working-directory: novalist-extension
-        run: dotnet restore "${{ steps.which.outputs.project }}" -p:UseLocalSdk=true
+        run: dotnet restore --force-evaluate --no-http-cache -p:UseLocalSdk=false
 
       - name: Build
         working-directory: novalist-extension
         run: >-
           dotnet build "${{ steps.which.outputs.project }}"
           -c ${{ env.CONFIGURATION }}
-          -p:UseLocalSdk=true -p:ExtensionFolder=
+          -p:UseLocalSdk=false -p:ExtensionFolder=
           --no-restore
 
       - name: Test
         working-directory: novalist-extension
         # The whole test project runs, not just this extension's tests: a change
         # to shared code that breaks a sibling should stop the release.
-        run: dotnet test tests/Novalist.Extensions.Tests -c ${{ env.CONFIGURATION }} -p:UseLocalSdk=true -p:ExtensionFolder=
+        run: dotnet test tests/Novalist.Extensions.Tests -c ${{ env.CONFIGURATION }} --no-restore -p:UseLocalSdk=false -p:ExtensionFolder=
 
       - name: Package
         working-directory: novalist-extension

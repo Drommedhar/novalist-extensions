@@ -1,7 +1,7 @@
 # Novalist extensions
 
 Extensions for [Novalist](https://github.com/Drommedhar/novalist-official),
-built against the `Novalist.Sdk` source - see [the SDK these need](#the-sdk-these-need).
+built with `Novalist.Sdk` - see [the SDK these need](#the-sdk-these-need).
 
 Everything here is work that the audit deliberately placed **outside** core:
 format readers and writers, read-only analysis, networked lookups, and static
@@ -39,7 +39,7 @@ git push origin formats-v1.0.0
 ```
 
 The workflow stamps the version from the tag into `extension.json`, builds
-against the SDK source, runs the whole test suite, and attaches
+against the latest stable SDK package from NuGet, runs the whole test suite, and attaches
 `com.novalist.formats.zip` to a GitHub release. Adding it to the gallery is a
 separate, manual step.
 
@@ -49,21 +49,16 @@ EPUB check has no business bumping the version of the writing timer.
 ## The SDK these need
 
 All five extensions require Novalist **3.6.0 or later** and build with the
-.NET 10 SDK against Novalist SDK **15.0.0**. Earlier hosts can continue using
+.NET 10 SDK. Earlier hosts can continue using
 older compatible extension releases.
 
-Development builds use the updated SDK source in the adjacent
-`novalist-official` checkout. CI and release builds use its **v3.6.0 tag**,
-so the matching updated host
-must be released before these extension releases can build. If the next host
-release uses a different version, update the release ref and manifest minimums
-together before tagging extensions. The SDK package version is managed by the
-host's CI; it is separate from the desktop version.
-
-Package builds are optional and require an explicit exact version:
-`-p:UseLocalSdk=false -p:NovalistSdkVersion=<released-sdk-version>`.
-Choose the SDK shipped by the compatible host. No package version or range is
-selected automatically, and a missing version fails with a clear build error.
+Local builds use the SDK source in the adjacent `novalist-official` checkout.
+CI and release builds set `UseLocalSdk=false` and restore the latest stable
+`Novalist.Sdk` package from NuGet using `Version="*"`. Each workflow refreshes
+dependencies during restore, then uses those resolved versions for build and test.
+The SDK package version is managed by the host's CI and is separate from the
+desktop version. When adopting new SDK APIs, update the extension's minimum host
+version to the release that supports them.
 
 ## Building locally
 
@@ -86,8 +81,8 @@ A build also copies each extension into your local Novalist extensions folder
 to see the change in the running app.
 
 For a build without deploying into your installed extensions, pass
-`-p:ExtensionFolder=`. For an optional package build, supply both
-`-p:UseLocalSdk=false` and the exact `NovalistSdkVersion` described above.
+`-p:ExtensionFolder=`. To build locally against the NuGet package, pass
+`-p:UseLocalSdk=false`.
 
 ## Adding an extension to this repository
 
