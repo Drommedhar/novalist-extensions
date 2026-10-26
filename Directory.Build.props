@@ -8,17 +8,12 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 
-  <!-- Development and release builds use the host SDK checkout beside this repository. -->
+  <!-- Local builds use the adjacent SDK source; CI uses the latest stable NuGet package. -->
   <ItemGroup Condition="'$(UseLocalSdk)' != 'false'">
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\novalist-official\Novalist.Sdk\Novalist.Sdk.csproj" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(UseLocalSdk)' == 'false' And '$(NovalistSdkVersion)' != ''">
-    <PackageReference Include="Novalist.Sdk" Version="[$(NovalistSdkVersion)]" />
+  <ItemGroup Condition="'$(UseLocalSdk)' == 'false'">
+    <PackageReference Include="Novalist.Sdk" Version="*" />
   </ItemGroup>
-
-  <Target Name="RequireExplicitSdkPackageVersion" BeforeTargets="CollectPackageReferences;PrepareForBuild"
-          Condition="'$(UseLocalSdk)' == 'false' And '$(NovalistSdkVersion)' == ''">
-    <Error Text="Package builds require an exact NovalistSdkVersion from a compatible released host. Use the adjacent updated host source with UseLocalSdk=true while its SDK is unreleased." />
-  </Target>
 </Project>
